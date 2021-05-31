@@ -73,7 +73,7 @@ void mini_test_0() {
     std::vector<RoiBox> roi_boxes;
 
     roi_boxes.push_back({0, 0, 0, 2, 2});
-    int p, q = 2;
+    int p = 2, q = 2;
     const float ans_1[roi_boxes.size()][p][q] = 
         {{{0.88, 0.57},
           {0.66, 0.82}}};    
@@ -81,7 +81,7 @@ void mini_test_0() {
 
     roi_boxes.push_back({0, 0, 3, 6, 7});
     roi_boxes.push_back({0, 5, 0, 7, 2});
-    p, q = 3;
+    p = 3, q = 3;
     const float ans_2[roi_boxes.size()][p][q] = 
         {{{0.85, 0.84, 0.75},
           {0.69, 0.88, 0.96},
@@ -143,11 +143,12 @@ int main(int argc, char *argv[]) {
         int n = 1 << _i;
         float sparsity_level = 0.05;
         int sparse_n = n * sparsity_level;
-        int p, q = 3;
+        int p = 3, q = 3;
         int num_images = 1;
         int c = 1;
-        int h, w = sparse_n;
+        int h = sparse_n, w = sparse_n;
         std::vector<RoiBox> roi_boxes;
+        // img_idx, xmin, ymin, xmax, ymax
         roi_boxes.push_back({0, 0, 0, 2, 2});
 
         if (size_to_run != -1 && size_to_run != n)
