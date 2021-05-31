@@ -210,7 +210,7 @@ int main(int argc, char *argv[]) {
         // CPU implementation
         if (kernel == "cpu" || kernel == "all") {
             START_TIMER();
-            cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats,
+            cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
                 num_images, c, h, w, roi_boxes, p, q);
             STOP_RECORD_TIMER(cpu_ms);
 
