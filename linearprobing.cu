@@ -3,16 +3,33 @@
 #include "stdint.h"
 #include "vector"
 #include "linearprobing.h"
+#include "sparse_utils.hpp"
 
 // 32 bit Murmur3 hash
-__device__ uint32_t hash(uint32_t k)
-{
-    k ^= k >> 16;
-    k *= 0x85ebca6b;
-    k ^= k >> 13;
-    k *= 0xc2b2ae35;
-    k ^= k >> 16;
-    return k & (kHashTableCapacity-1);
+// alexcdot: Not used since using tuple_hash
+// __device__ uint32_t hash(uint32_t k)
+// {
+//     k ^= k >> 16;
+//     k *= 0x85ebca6b;
+//     k ^= k >> 13;
+//     k *= 0xc2b2ae35;
+//     k ^= k >> 16;
+//     return k & (kHashTableCapacity-1);
+// }
+
+__device__ uint32_t tuple_hash(d_pool_key k) {
+    uint32_t h = ((((((((thrust::get<0>(k) ^ thrust::get<1>(k)) * base_mult)
+        ^ thrust::get<2>(k)) * (base_mult + base_adder))
+        ^ thrust::get<3>(k)) * (base_mult + base_adder * 2))
+        ^ thrust::get<4>(k)) * (base_mult + base_adder * 3));
+    return h & (kHashTableCapacity-1);
+}
+__device__ uint32_t alt_tuple_hash(d_pool_key k) {
+    uint32_t h = ((((((((thrust::get<1>(k) ^ thrust::get<2>(k)) * base_mult)
+        ^ thrust::get<3>(k)) * (base_mult + base_adder))
+        ^ thrust::get<4>(k)) * (base_mult + base_adder * 2))
+        ^ thrust::get<0>(k)) * (base_mult + base_adder * 3));
+    return h & (kHashTableCapacity-1);
 }
 
 // Create a hash table. For linear probing, this is just an array of KeyValues
@@ -23,7 +40,8 @@ KeyValue* create_hashtable()
     cudaMalloc(&hashtable, sizeof(KeyValue) * kHashTableCapacity);
 
     // Initialize hash table to empty
-    static_assert(kEmpty == 0xffffffff, "memset expected kEmpty=0xffffffff");
+    static_assert(vEmpty == 0xffffffff, "memset expected vEmpty=0xffffffff");
+
     cudaMemset(hashtable, 0xff, sizeof(KeyValue) * kHashTableCapacity);
 
     return hashtable;
@@ -32,18 +50,32 @@ KeyValue* create_hashtable()
 // Insert the key/values in kvs into the hashtable
 __global__ void gpu_hashtable_insert(KeyValue* hashtable, const KeyValue* kvs, unsigned int numkvs)
 {
+    d_pool_key kEmpty = thrust::make_tuple(
+        0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
     unsigned int threadid = blockIdx.x*blockDim.x + threadIdx.x;
     if (threadid < numkvs)
     {
-        uint32_t key = kvs[threadid].key;
+        d_pool_key key = kvs[threadid].key;
         float value = kvs[threadid].value;
-        uint32_t slot = hash(key);
+        uint32_t slot = tuple_hash(key);
+        uint32_t rotated_slot = alt_tuple_hash(key);
+        uint32_t empty_start = thrust::get<0>(kEmpty);
 
         while (true)
         {
-            uint32_t prev = atomicCAS(&hashtable[slot].key, kEmpty, key);
-            if (prev == kEmpty || prev == key)
+            // Highly unlikely to get two tuples hashing to same thing after
+            // rotation
+
+            // atomicCas only takes int 16, 32, 64
+            // so we check the first section of tuple instead of the whole
+            // tuple
+            uint32_t prev = atomicCAS(
+                &thrust::get<0>(hashtable[slot].key),
+                empty_start,
+                rotated_slot);
+            if (prev == empty_start || prev == rotated_slot)
             {
+                hashtable[slot].key = key;
                 hashtable[slot].value = value;
                 return;
             }
@@ -92,11 +124,13 @@ void insert_hashtable(KeyValue* pHashTable, const KeyValue* kvs, uint32_t num_kv
 // Lookup keys in the hashtable, and return the values
 __global__ void gpu_hashtable_lookup(KeyValue* hashtable, KeyValue* kvs, unsigned int numkvs)
 {
+    d_pool_key kEmpty = thrust::make_tuple(
+        0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
     unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
     if (threadid < kHashTableCapacity)
     {
-        uint32_t key = kvs[threadid].key;
-        uint32_t slot = hash(key);
+        d_pool_key key = kvs[threadid].key;
+        uint32_t slot = tuple_hash(key);
 
         while (true)
         {
@@ -107,7 +141,7 @@ __global__ void gpu_hashtable_lookup(KeyValue* hashtable, KeyValue* kvs, unsigne
             }
             if (hashtable[slot].key == kEmpty)
             {
-                kvs[threadid].value = kEmpty;
+                kvs[threadid].value = vEmpty;
                 return;
             }
             slot = (slot + 1) & (kHashTableCapacity - 1);
@@ -156,17 +190,19 @@ void lookup_hashtable(KeyValue* pHashTable, KeyValue* kvs, uint32_t num_kvs)
 // Deleted keys are not reused; once a key is assigned a slot, it never moves
 __global__ void gpu_hashtable_delete(KeyValue* hashtable, const KeyValue* kvs, unsigned int numkvs)
 {
+    d_pool_key kEmpty = thrust::make_tuple(
+        0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
     unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
     if (threadid < kHashTableCapacity)
     {
-        uint32_t key = kvs[threadid].key;
-        uint32_t slot = hash(key);
+        d_pool_key key = kvs[threadid].key;
+        uint32_t slot = tuple_hash(key);
 
         while (true)
         {
             if (hashtable[slot].key == key)
             {
-                hashtable[slot].value = kEmpty;
+                hashtable[slot].value = vEmpty;
                 return;
             }
             if (hashtable[slot].key == kEmpty)
@@ -217,13 +253,15 @@ void delete_hashtable(KeyValue* pHashTable, const KeyValue* kvs, uint32_t num_kv
 // Iterate over every item in the hashtable; return non-empty key/values
 __global__ void gpu_iterate_hashtable(KeyValue* pHashTable, KeyValue* kvs, uint32_t* kvs_size)
 {
+    d_pool_key kEmpty = thrust::make_tuple(
+        0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
     unsigned int threadid = blockIdx.x * blockDim.x + threadIdx.x;
     if (threadid < kHashTableCapacity) 
     {
         if (pHashTable[threadid].key != kEmpty) 
         {
-            uint32_t value = pHashTable[threadid].value;
-            if (value != kEmpty)
+            float value = pHashTable[threadid].value;
+            if (value != vEmpty)
             {
                 uint32_t size = atomicAdd(kvs_size, 1);
                 kvs[size] = pHashTable[threadid];

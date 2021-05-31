@@ -1,3 +1,4 @@
+// SOURCE CODE FROM https://github.com/nosferalatu/SimpleGPUHashTable
 #include "algorithm"
 #include "random"
 #include "stdint.h"
@@ -12,18 +13,21 @@
 // kEmpty is used to indicate an empty slot
 std::vector<KeyValue> generate_random_keyvalues(std::mt19937& rnd, uint32_t numkvs)
 {
-    std::uniform_int_distribution<uint32_t> dis(0, kEmpty - 1);
+    std::uniform_int_distribution<uint32_t> dis(0, kEmptyElem - 1);
     std::uniform_real_distribution<float> fdis(0,
-        static_cast<float>(kEmpty - 1));
+        static_cast<float>(vEmpty - 1));
 
     std::vector<KeyValue> kvs;
     kvs.reserve(numkvs);
 
     for (uint32_t i = 0; i < numkvs; i++)
     {
-        uint32_t rand0 = dis(rnd);
+        // uint32_t rand0 = dis(rnd);
         float rand1 = fdis(rnd);
-        kvs.push_back(KeyValue{rand0, rand1});
+        kvs.push_back(KeyValue{
+            thrust::make_tuple(dis(rnd), dis(rnd), dis(rnd), dis(rnd), dis(rnd)),
+            rand1
+        });
     }
 
     return kvs;
@@ -65,7 +69,7 @@ void test_unordered_map(std::vector<KeyValue> insert_kvs, std::vector<KeyValue> 
     printf("Timing std::unordered_map...\n");
 
     {
-        std::unordered_map<uint32_t, float> kvs_map;
+        std::unordered_map<d_pool_key, float, CustomThrustHash> kvs_map;
         for (auto& kv : insert_kvs) 
         {
             kvs_map[kv.key] = kv.value;
@@ -87,7 +91,7 @@ void test_unordered_map(std::vector<KeyValue> insert_kvs, std::vector<KeyValue> 
 void test_correctness(std::vector<KeyValue> insert_kvs, std::vector<KeyValue> delete_kvs, std::vector<KeyValue> kvs)
 {
     printf("Testing that there are no duplicate keys...\n");
-    std::unordered_set<uint32_t> unique_keys;
+    std::unordered_set<d_pool_key, CustomThrustHash> unique_keys;
     for (uint32_t i = 0; i < kvs.size(); i++)
     {
         if (i % 10000000 == 0)
@@ -103,7 +107,7 @@ void test_correctness(std::vector<KeyValue> insert_kvs, std::vector<KeyValue> de
     }
 
     printf("Building unordered_map from original list...\n");
-    std::unordered_map<uint32_t, std::vector<float>> all_kvs_map;
+    std::unordered_map<d_pool_key, std::vector<float>, CustomThrustHash> all_kvs_map;
     for (int i = 0; i < insert_kvs.size(); i++)
     {
         if (i % 10000000 == 0)

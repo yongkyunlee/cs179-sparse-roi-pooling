@@ -1,7 +1,8 @@
+#pragma once
 #include <tuple>
 
-static int base_mult = 1000003;
-static int base_adder = 82520 + 5;
+static const int base_mult = 1000003;
+static const int base_adder = 82520 + 5;
 
 // img_idx, box_idx, channel, hIdx, wIdx
 typedef std::tuple<int, int, int, int, int> pool_key;
