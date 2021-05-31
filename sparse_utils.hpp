@@ -1,5 +1,8 @@
 #include <tuple>
 
+static int base_mult = 1000003;
+static int base_adder = 82520 + 5;
+
 // img_idx, box_idx, channel, hIdx, wIdx
 typedef std::tuple<int, int, int, int, int> pool_key;
 
@@ -9,13 +12,16 @@ class CustomHash
     // Implement a hash function
     std::size_t operator()(const pool_key& k) const
     {
-        // This could be a bad hash function anyway
+        // Inspired by https://github.com/python/cpython/blob/3.7/Objects/tupleobject.c#L348
         std::size_t h1 = std::hash<int>{}(std::get<0>(k));
         std::size_t h2 = std::hash<int>{}(std::get<1>(k));
         std::size_t h3 = std::hash<int>{}(std::get<2>(k));
         std::size_t h4 = std::hash<int>{}(std::get<3>(k));
         std::size_t h5 = std::hash<int>{}(std::get<4>(k));
-        return h1 ^ h2 ^ h3 ^ h4 ^ h5;
+        return ((((((((h1 ^ h2) * base_mult)
+            ^ h3) * (base_mult + base_adder))
+            ^ h4) * (base_mult + base_adder * 2))
+            ^ h5) * (base_mult + base_adder * 3));
     }
 };
 

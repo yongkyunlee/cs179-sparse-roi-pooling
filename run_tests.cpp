@@ -4,6 +4,7 @@
 #include <cstring>
 #include <string>
 #include <iostream>
+#include <math.h>
 
 #include <cuda_runtime.h>
 
@@ -196,7 +197,7 @@ int main(int argc, char *argv[]) {
     for (int _i = 9; _i < 13; _i++) {
         int n = 1 << _i;
         float sparsity_level = 0.05;
-        int sparse_n = n * sparsity_level;
+        int sparse_n = static_cast<int>(ceil(n * sparsity_level));
         int p = 3, q = 3;
         int num_images = 1;
         int c = 1;
