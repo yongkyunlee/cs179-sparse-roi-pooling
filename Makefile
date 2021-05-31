@@ -45,7 +45,7 @@ TARGETS = run_tests test_sparse_utils test_linearprobing
 
 all: $(TARGETS)
 
-run_tests: run_tests.cpp sparse_roi_pool_host.cpp ta_utilities.cpp sparse_utils.cpp sparse_roi_pool_device.o linearprobing.o
+run_tests: run_tests.cpp sparse_roi_pool_host.cpp ta_utilities.cpp sparse_utils.cpp test_utils.cpp sparse_roi_pool_device.o linearprobing.o
 	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
 
 test_sparse_utils: test_sparse_utils.cpp sparse_roi_pool_host.cpp ta_utilities.cpp sparse_utils.cpp sparse_roi_pool_device.o linearprobing.o

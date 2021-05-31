@@ -66,9 +66,7 @@ void cpuSparseRoiPooling(const int *in_loc, const float *in_feats,
                                                     poolIdxH, poolIdxW);
             if (pool_map.find(pool_val_key) == pool_map.end()) {
                 // insert pool section value if the pool_val_key does not exist
-                for (int k = 0; k < c; k++) {
-                    pool_map[pool_val_key] = in_feats[j];
-                }      
+                pool_map[pool_val_key] = in_feats[j];
             } else {
                 // update pool section value if the new value is larger
                 if (pool_map[pool_val_key] < in_feats[j]) {

@@ -146,12 +146,14 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
         if (pool_val == 0) continue;
         pool_val_key = make_tuple(loc1[5 * i], loc1[5 * i + 1], loc1[5 * i + 2],
                                   loc1[5 * i + 3], loc1[5 * i + 4]);
-        pool_map1[pool_val_key] = feats1[i];
+        pool_map1[pool_val_key] = pool_val;
     }
     for (int i = 0; i < size2; i++) {
+        pool_val = feats2[i];
+        if (pool_val == 0) continue;
         pool_val_key = make_tuple(loc2[5 * i], loc2[5 * i + 1], loc2[5 * i + 2],
                                   loc2[5 * i + 3], loc2[5 * i + 4]);
-        pool_map2[pool_val_key] = feats2[i];
+        pool_map2[pool_val_key] = pool_val;
     }
     if (pool_map1.size() != pool_map2.size()) return false;
     for ( auto it = pool_map1.begin(); it != pool_map1.end(); ++it ) {
