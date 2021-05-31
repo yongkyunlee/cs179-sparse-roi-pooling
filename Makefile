@@ -45,10 +45,10 @@ TARGETS = run_tests
 
 all: $(TARGETS)
 
-run_tests: run_tests.cpp sparse_roi_pool_host.cpp ta_utilities.cpp run_tests.o
+run_tests: run_tests.cpp sparse_roi_pool_host.cpp ta_utilities.cpp sparse_utils.cpp run_tests.o
 	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
 
-run_tests.o: sparse_roi_pool_device.cu
+run_tests.o: sparse_roi_pool_device.cu 
 	$(NVCC) $(NVCCFLAGS) -O3 $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) -I$(CUDA_INC_PATH) -o $@ -c $<
 
 clean:

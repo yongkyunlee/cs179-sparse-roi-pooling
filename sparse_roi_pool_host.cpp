@@ -5,25 +5,7 @@
 #include <iostream>
 
 #include "sparse_roi_pool_device.cuh"
-
-// img_idx, box_idx, channel, hIdx, wIdx
-typedef std::tuple<int, int, int, int, int> pool_key;
-
-class CustomHash
-{
-    public:
-    // Implement a hash function
-    std::size_t operator()(const pool_key& k) const
-    {
-        // This could be a bad hash function anyway
-        std::size_t h1 = std::hash<int>{}(std::get<0>(k));
-        std::size_t h2 = std::hash<int>{}(std::get<1>(k));
-        std::size_t h3 = std::hash<int>{}(std::get<2>(k));
-        std::size_t h4 = std::hash<int>{}(std::get<3>(k));
-        std::size_t h5 = std::hash<int>{}(std::get<4>(k));
-        return h1 ^ h2 ^ h3 ^ h4 ^ h5;
-    }
-};
+#include "sparse_utils.hpp"
 
 void cpuSparseRoiPooling(const int *in_loc, const float *in_feats,
     int *out_loc, float *out_feats, int sparse_n, int n, int c,
@@ -32,11 +14,11 @@ void cpuSparseRoiPooling(const int *in_loc, const float *in_feats,
     /* hashmap of { (img_idx, channel, wIdx, hIdx): value } to keep track of maximum
      * for the corresponding pool section */
     std::unordered_map<pool_key, float, CustomHash> pool_map;
-    std::cout << "stargin cpuSparseRoiPooling " << std::endl;
-    for (int i = 0; i < roi_boxes.size(); i++) {
+    // std::cout << "stargin cpuSparseRoiPooling " << std::endl;
+    for (unsigned int i = 0; i < roi_boxes.size(); i++) {
         int roi_width = roi_boxes[i].xmax - roi_boxes[i].xmin + 1,
             roi_height = roi_boxes[i].ymax - roi_boxes[i].ymin + 1;
-        std::cout << "processing roi_boxes i: " << i << std::endl;
+        // std::cout << "processing roi_boxes i: " << i << std::endl;
         for (int j = 0; j < sparse_n; j++) {
             // if the roi box image index is different from the sparse image index
             if (in_loc[4 * j] != roi_boxes[i].img_indx) {
@@ -48,7 +30,7 @@ void cpuSparseRoiPooling(const int *in_loc, const float *in_feats,
                 continue;
             }
 
-            std::cout << "roi_height: " << roi_height << " roi_width: " << roi_width << std::endl;
+            // std::cout << "roi_height: " << roi_height << " roi_width: " << roi_width << std::endl;
 
             // get pool section idx (0 <= poolIdxH < p && 0 <= poolIdxW < q)
             int poolIdxH = -1, hIdx = 0, hRem = roi_height % p;
@@ -78,7 +60,7 @@ void cpuSparseRoiPooling(const int *in_loc, const float *in_feats,
                 }
             }
 
-            std::cout << "poolIdxH: " << poolIdxH << " poolIdxW: " << poolIdxW << std::endl;
+            // std::cout << "poolIdxH: " << poolIdxH << " poolIdxW: " << poolIdxW << std::endl;
 
             pool_key pool_val_key = std::make_tuple(in_loc[4 * j], i, in_loc[4 * j + 1],
                                                     poolIdxH, poolIdxW);
