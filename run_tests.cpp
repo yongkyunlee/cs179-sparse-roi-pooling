@@ -242,24 +242,9 @@ int main(int argc, char *argv[]) {
         int *in_loc = new int[sparse_n * 4];  // num_images, c, h, w
         int *out_loc = new int[sparse_n * 5];  // num_images, b, c, p, q
 
-        // Allocate device memory
-        float *d_in_feats;
-        float *d_out_feats;
-        int *d_in_loc;
-        int *d_out_loc;
-        gpuErrChk(cudaMalloc(&d_in_feats, sparse_n * sizeof(float)));
-        gpuErrChk(cudaMalloc(&d_out_feats, sparse_n * sizeof(float)));
-        gpuErrChk(cudaMalloc(&d_in_loc, sparse_n * 4 * sizeof(int)));
-        gpuErrChk(cudaMalloc(&d_out_loc, sparse_n * 5 * sizeof(int)));
 
         // Initialize in_feats data to random numbers in [0, 1]
         // randomFill ...
-
-        // Copy input to GPU
-        gpuErrChk(cudaMemcpy(d_in_feats, in_feats, sparse_n * sizeof(float), 
-            cudaMemcpyHostToDevice));
-        gpuErrChk(cudaMemcpy(d_in_loc, in_loc, sparse_n * 4 * sizeof(int), 
-            cudaMemcpyHostToDevice));
 
         // TODO: set up in_loc
 
@@ -280,23 +265,14 @@ int main(int argc, char *argv[]) {
         // Naive GPU implementation
         if (kernel == "naive" || kernel == "all") {
             START_TIMER();
-            cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
+            cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats,
                 sparse_n, num_images, c, h, w, roi_boxes, p, q,
                 NAIVE);
             STOP_RECORD_TIMER(naive_gpu_ms);
 
-            gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
-                sparse_n * sizeof(float), 
-                cudaMemcpyDeviceToHost));
-            gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
-                sparse_n * 5 * sizeof(int), 
-                cudaMemcpyDeviceToHost));
             checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
-
             memset(out_feats, 0, sparse_n * sizeof(float));
             memset(out_loc, 0, sparse_n * 5 * sizeof(int));
-            gpuErrChk(cudaMemset(d_out_feats, 0, sparse_n * sizeof(float)));
-            gpuErrChk(cudaMemset(d_out_loc, 0, sparse_n * 5 * sizeof(int)));
 
             printf("Size %d naive GPU: %f ms\n", n, naive_gpu_ms);
         }
@@ -330,12 +306,6 @@ int main(int argc, char *argv[]) {
         delete[] out_feats;
         delete[] in_loc;
         delete[] out_loc;
-
-        // Free device memory
-        gpuErrChk(cudaFree(d_in_feats));
-        gpuErrChk(cudaFree(d_out_feats));
-        gpuErrChk(cudaFree(d_in_loc));
-        gpuErrChk(cudaFree(d_out_loc));
 
         printf("\n");
     }

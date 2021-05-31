@@ -14,8 +14,8 @@ struct RoiBox {
 };
 
 void cudaSparseRoiPooling(
-    const int *d_in_loc, const float *d_in_feats,
-    int *d_out_loc, float *d_out_feats,
+    const int *in_loc, const float *in_feats,
+    int *out_loc, float *out_feats,
     int sparse_n,
     int n,
     int c,
