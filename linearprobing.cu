@@ -36,7 +36,7 @@ __global__ void gpu_hashtable_insert(KeyValue* hashtable, const KeyValue* kvs, u
     if (threadid < numkvs)
     {
         uint32_t key = kvs[threadid].key;
-        uint32_t value = kvs[threadid].value;
+        float value = kvs[threadid].value;
         uint32_t slot = hash(key);
 
         while (true)

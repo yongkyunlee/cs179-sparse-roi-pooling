@@ -41,7 +41,7 @@ else
 	NVCCFLAGS := -m64
 endif
 
-TARGETS = run_tests test_sparse_utils
+TARGETS = run_tests test_sparse_utils test_linearprobing
 
 all: $(TARGETS)
 
@@ -49,6 +49,9 @@ run_tests: run_tests.cpp sparse_roi_pool_host.cpp ta_utilities.cpp sparse_utils.
 	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
 
 test_sparse_utils: test_sparse_utils.cpp sparse_roi_pool_host.cpp ta_utilities.cpp sparse_utils.cpp sparse_roi_pool_device.o linearprobing.o
+	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
+
+test_linearprobing: test_linearprobing.cpp linearprobing.o
 	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
 
 sparse_roi_pool_device.o: sparse_roi_pool_device.cu

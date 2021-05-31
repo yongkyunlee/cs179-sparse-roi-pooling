@@ -4,12 +4,12 @@
 struct KeyValue
 {
     uint32_t key;
-    uint32_t value;
+    float value;
 };
 
 const uint32_t kHashTableCapacity = 128 * 1024 * 1024;
 
-const uint32_t kNumKeyValues = kHashTableCapacity / 2;
+const uint32_t kNumKeyValues = 8 * 1024 * 1024; // kHashTableCapacity / 2;
 
 const uint32_t kEmpty = 0xffffffff;
 
