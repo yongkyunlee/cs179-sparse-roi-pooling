@@ -27,8 +27,8 @@ void cudaSparseRoiPooling(
 
 void cpuSparseRoiPooling(
     const int *in_loc, const float *in_feats,
-    int *out_loc, float *out_feats,
-    int sparse_n,
+    int *out_loc, float *out_feats, 
+    const int spares_n,
     int n,
     int c,
     int h,

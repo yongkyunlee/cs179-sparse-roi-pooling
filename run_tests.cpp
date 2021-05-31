@@ -8,6 +8,7 @@
 
 #include "sparse_roi_pool_device.cuh"
 #include "ta_utilities.hpp"
+#include "sparse_utils.hpp"
 /*
  * NOTE: You can use this macro to easily check cuda error codes
  * and get more information.
@@ -78,6 +79,8 @@ void mini_test_0() {
         {{{0.88, 0.57},
           {0.66, 0.82}}};    
     roi_boxes.pop_back();
+    cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
+                num_images, c, h, w, roi_boxes, p, q);
 
     roi_boxes.push_back({0, 0, 3, 6, 7});
     roi_boxes.push_back({0, 5, 0, 7, 2});
@@ -136,6 +139,8 @@ int main(int argc, char *argv[]) {
         kernel == "cpu"     ||
         kernel == "naive"   ||
         kernel == "optimal");
+
+    mini_test_0();
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)
