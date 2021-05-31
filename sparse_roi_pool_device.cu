@@ -9,4 +9,13 @@ void cudaSparseRoiPooling(const int *d_in_loc, const float *d_in_feats,
     int h, int w, std::vector<RoiBox> roi_boxes, int p, int q,
     Implementation type) {
 
+    /*
+    Iterate through all in_loc for sparse_n steps
+    If it's in the right area, find its cell in the output
+    If there's an entry, max it. Otherwise, just enter it.
+
+    At the end, one thread reads through all entries and writes it to
+    out_loc, out_feats
+     */
+
 }
