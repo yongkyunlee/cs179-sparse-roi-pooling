@@ -280,7 +280,7 @@ int main(int argc, char *argv[]) {
         if (kernel == "naive" || kernel == "all") {
             START_TIMER();
             cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
-                num_images, c, h, w, roi_boxes, p, q,
+                sparse_n, num_images, c, h, w, roi_boxes, p, q,
                 NAIVE);
             STOP_RECORD_TIMER(naive_gpu_ms);
 
