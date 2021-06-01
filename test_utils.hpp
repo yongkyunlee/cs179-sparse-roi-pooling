@@ -18,5 +18,5 @@ typedef struct {
     int out_size;
 } PoolInfo;
 
-void run_mini_test1();
-void run_mini_test2();
+void run_mini_test1(Implementation mode);
+void run_mini_test2(Implementation mode);

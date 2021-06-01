@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
     run_mini_test2(CPU);
     run_mini_test1(NAIVE);
     run_mini_test2(NAIVE);
-    return 1
+    return 1;
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)
