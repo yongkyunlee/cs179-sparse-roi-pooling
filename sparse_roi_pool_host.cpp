@@ -13,7 +13,7 @@ void cpuSparseRoiPooling(const int *in_loc, const float *in_feats,
 
     /* hashmap of { (img_idx, channel, wIdx, hIdx): value } to keep track of maximum
      * for the corresponding pool section */
-    std::unordered_map<pool_key, float, CustomHash> pool_map;
+    std::unordered_map<pool_key, float, PoolKeyHash> pool_map;
     // std::cout << "stargin cpuSparseRoiPooling " << std::endl;
     for (unsigned int i = 0; i < roi_boxes.size(); i++) {
         int roi_width = roi_boxes[i].xmax - roi_boxes[i].xmin + 1,

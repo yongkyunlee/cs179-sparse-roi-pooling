@@ -101,8 +101,8 @@ int main(int argc, char *argv[]) {
         kernel == "naive"   ||
         kernel == "optimal");
 
-    run_mini_test1();
-    run_mini_test2();
+    // run_mini_test1();
+    // run_mini_test2();
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)
@@ -113,10 +113,12 @@ int main(int argc, char *argv[]) {
         int p = 3, q = 3;
         int num_images = 1;
         int c = 1;
-        int h = sparse_n, w = sparse_n;
+        int h = n, w = n;
         std::vector<RoiBox> roi_boxes;
         // img_idx, xmin, ymin, xmax, ymax
         roi_boxes.push_back({0, 0, 0, 2, 2});
+        roi_boxes.push_back({0, 0, 0, n-1, n-1});
+        int out_size = num_images * roi_boxes.size() * c * p * q;
 
         if (size_to_run != -1 && size_to_run != n)
             continue;
@@ -147,34 +149,37 @@ int main(int argc, char *argv[]) {
 
         // Allocate host memory
         float *in_feats = new float[sparse_n];
-        // Output is larger than needed, so that we don't need to dynamically
-        // size
-        float *out_feats = new float[sparse_n];
-        // TODO: initialize loc
         int *in_loc = new int[sparse_n * 4];  // num_images, c, h, w
-        int *out_loc = new int[sparse_n * 5];  // num_images, b, c, p, q
-
+        
+        // Output has maximum size of num_images * num_channels * num_boxes * p * q
+        float *out_feats = new float[out_size];
+        int *out_loc = new int[out_size * 5];  // num_images, b, c, p, q
 
         // Initialize in_feats data to random numbers in [0, 1]
-        // randomFill ...
+        generate_random_sparse(in_loc, in_feats, 0.0f, 1.0f, sparse_n,
+                               num_images, c, h, w);
 
-        // TODO: set up in_loc
+        // Initialize output to 0
+        memset(out_loc, 0, out_size * 5 * sizeof(int));
+        memset(out_feats, 0, out_size * sizeof(float));
+
+        std::cout << "Setting output memory for size " << n << std::endl; 
 
         // CPU implementation
         if (kernel == "cpu" || kernel == "all") {
             START_TIMER();
+            
             cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
                 num_images, c, h, w, roi_boxes, p, q);
             STOP_RECORD_TIMER(cpu_ms);
 
-            checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
-            memset(out_feats, 0, sparse_n * sizeof(float));
-            memset(out_loc, 0, sparse_n * 5 * sizeof(int));
+            // print_sparse(out_loc, out_feats, out_size, 5);
 
             printf("Size %d naive CPU: %f ms\n", n, cpu_ms);
         }
 
         // Naive GPU implementation
+        /*
         if (kernel == "naive" || kernel == "all") {
             START_TIMER();
             cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats,
@@ -187,7 +192,7 @@ int main(int argc, char *argv[]) {
             memset(out_loc, 0, sparse_n * 5 * sizeof(int));
 
             printf("Size %d naive GPU: %f ms\n", n, naive_gpu_ms);
-        }
+        }*/
 
         // // Optimal GPU implementation TODO: no optimal implementation planned
         // if (kernel == "optimal"    || kernel == "all") {
