@@ -7,7 +7,7 @@ static const int base_adder = 82520 + 5;
 // img_idx, box_idx, channel, hIdx, wIdx
 typedef std::tuple<int, int, int, int, int> pool_key;
 
-class CustomHash
+class PoolKeyHash
 {
     public:
     // Implement a hash function
@@ -26,6 +26,26 @@ class CustomHash
     }
 };
 
+// img_idx, channel, hIdx, wIdx
+typedef std::tuple <int, int, int, int> sparse_key;
+
+class SparseKeyHash
+{
+    public:
+    // Implement a hash function
+    std::size_t operator()(const sparse_key& k) const
+    {
+        // Inspired by https://github.com/python/cpython/blob/3.7/Objects/tupleobject.c#L348
+        std::size_t h1 = std::hash<int>{}(std::get<0>(k));
+        std::size_t h2 = std::hash<int>{}(std::get<1>(k));
+        std::size_t h3 = std::hash<int>{}(std::get<2>(k));
+        std::size_t h4 = std::hash<int>{}(std::get<3>(k));
+        return ((((((h1 ^ h2) * base_mult)
+            ^ h3) * (base_mult + base_adder))
+            ^ h4) * (base_mult + base_adder * 2));
+    }
+};
+
 int count_dense_nonzero(float *dense, int n_images, int n_channels,
                         int height, int width);
 void dense_to_sparse(float *dense, int *loc, float *feats, int dim,
@@ -36,3 +56,5 @@ void print_sparse(int *loc, float *feats, int sparse_n, int dim);
 bool is_dense_equal(float *dense1, float* dense2, int n_elem);
 bool is_sparse_equal(int *loc1, float *feats1, int size1,
                      int *loc2, float *feats2, int size2);
+void generate_random_sparse(int *loc, float *feats, float min_val, float max_val, int sparse_n,
+                            int n_images, int n_channels, int height, int width);

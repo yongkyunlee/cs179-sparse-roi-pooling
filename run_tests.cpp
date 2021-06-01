@@ -11,6 +11,7 @@
 #include "sparse_roi_pool_device.cuh"
 #include "ta_utilities.hpp"
 #include "sparse_utils.hpp"
+#include "test_utils.hpp"
 /*
  * NOTE: You can use this macro to easily check cuda error codes
  * and get more information.
@@ -61,101 +62,6 @@ void checkSparseRoiPooling(const int *in_loc, const float *in_feats,
     assert(correct);
 }
 
-
-void mini_test_0(Implementation mode) {
-    // Set up data for testing
-    const int n_images = 1, n_channels = 1, height = 8, width = 8;
-    const int n_elems = n_images * n_channels * height * width;
-    const float data[n_images][n_channels][height][width] =
-        {{{{0.88, 0.44,    0, 0.16, 0.37,    0, 0.96, 0.27},
-           {   0, 0.45, 0.57, 0.16, 0.63, 0.29,    0,    0},
-           {0.66,    0, 0.82, 0.64, 0.54,    0, 0.59, 0.26},
-           {0.85, 0.34, 0.76, 0.84, 0.29, 0.75, 0.62, 0.25},
-           {0.32, 0.74, 0.21, 0.39, 0.34, 0.03, 0.33, 0.48},
-           {0.20, 0.14, 0.16, 0.13, 0.73, 0.65, 0.96, 0.32},
-           {0.19, 0.69, 0.09, 0.86, 0.88, 0.07, 0.01, 0.48},
-           {0.83, 0.24, 0.97, 0.04, 0.24, 0.35, 0.50, 0.91}}}};
-    float *data_dense = new float[n_elems];
-    for (int i = 0; i < n_images; i++) {
-        for (int c = 0; c < n_channels; c++) {
-            for (int h = 0; h < height; h++) {
-                for (int w = 0; w < width; w++) {
-                    int dense_idx = i * n_channels * height * width + c * height * width +\
-                                    h * width + w;
-                    data_dense[dense_idx] = data[i][c][h][w];
-                }
-            }
-        }
-    }
-    // convert dense matrix to sparse matrix
-    int sparse_n = count_dense_nonzero(data_dense, n_images, n_channels, 
-                                       height, width);
-    int *in_loc = new int[sparse_n * 4];
-    float *in_feats = new float[sparse_n];
-    dense_to_sparse(data_dense, in_loc, in_feats, 4, n_images, -1,
-                    n_channels, height, width);
-    
-    std::vector<RoiBox> roi_boxes;
-    roi_boxes.push_back({0, 0, 0, 2, 2});
-    int p = 2, q = 2;
-    float ans[n_images][roi_boxes.size()][n_channels][p][q] = 
-        {{{{{0.88, 0.57},
-            {0.66, 0.82}}}}};
-    int out_size = n_images * n_channels * roi_boxes.size() * p * q;
-    float *ans_dense = new float[out_size];
-    for (int i = 0; i < n_images; i++) {
-        for (int b = 0; b < roi_boxes.size(); b++) {
-            for (int c = 0; c < n_channels; c++) {
-                for (int h = 0; h < p; h++) {
-                    for (int w = 0; w < q; w++) {
-                        int dense_idx = i * roi_boxes.size() * n_channels * p * q + \
-                                        b * n_channels * p * q + c * p * q + \
-                                        h * q + w;
-                        ans_dense[dense_idx] = ans[i][b][c][h][w];
-                    }
-                }
-            }
-        }
-    }
-    int *ans_loc = new int[out_size * 5];
-    float *ans_feats = new float[out_size];
-    dense_to_sparse(ans_dense, ans_loc, ans_feats, 5, n_images,
-                    roi_boxes.size(), n_channels, p, q);
-    print_sparse(ans_loc, ans_feats, out_size, 5);
-    int *out_loc = new int[out_size * 5];
-    float *out_feats = new float[out_size];
-    if (mode == CPU) {
-        cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
-                n_images, n_channels, height, width, roi_boxes, p, q);
-    } else if (mode == NAIVE) {
-        cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
-                n_images, n_channels, height, width, roi_boxes, p, q, mode);
-    }
-    print_sparse(out_loc, out_feats, out_size, 5);
-    bool correct = is_sparse_equal(ans_loc, ans_feats, out_size, out_loc, out_feats, out_size);
-    std::cout << "Is answer correct: " << correct << " for mode: " <<
-        mode << std::endl;
-    
-    roi_boxes.pop_back();
-    roi_boxes.push_back({0, 0, 3, 6, 7});
-    roi_boxes.push_back({0, 5, 0, 7, 2});
-    p = 3, q = 3;
-    const float ans_2[roi_boxes.size()][p][q] = 
-        {{{0.85, 0.84, 0.75},
-          {0.69, 0.88, 0.96},
-          {0.97, 0.24, 0.50}},
-         {{0, 0.96, 0.27},
-          {0.29, 0, 0},
-          {0, 0.59, 0.26}}
-        };    
-    roi_boxes.pop_back();    
-    roi_boxes.pop_back();
-
-    // TODO: convert to sparse form and test
-
-}
-
-
 int main(int argc, char *argv[]) {
 
     // These functions allow you to select the least utilized GPU 
@@ -195,9 +101,12 @@ int main(int argc, char *argv[]) {
         kernel == "naive"   ||
         kernel == "optimal");
 
-    mini_test_0(CPU);
-    mini_test_0(NAIVE);
-    return 1;
+
+    run_mini_test1(CPU);
+    run_mini_test2(CPU);
+    run_mini_test1(NAIVE);
+    run_mini_test2(NAIVE);
+    return 1
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)
@@ -208,10 +117,12 @@ int main(int argc, char *argv[]) {
         int p = 3, q = 3;
         int num_images = 1;
         int c = 1;
-        int h = sparse_n, w = sparse_n;
+        int h = n, w = n;
         std::vector<RoiBox> roi_boxes;
         // img_idx, xmin, ymin, xmax, ymax
-        roi_boxes.push_back({0, 0, 0, 2, 2});
+        roi_boxes.push_back({0, 0, 0, n / 3, n / 3});
+        roi_boxes.push_back({0, 0, 0, n-1, n-1});
+        int out_size = num_images * roi_boxes.size() * c * p * q;
 
         if (size_to_run != -1 && size_to_run != n)
             continue;
@@ -242,44 +153,53 @@ int main(int argc, char *argv[]) {
 
         // Allocate host memory
         float *in_feats = new float[sparse_n];
-        // Output is larger than needed, so that we don't need to dynamically
-        // size
-        float *out_feats = new float[sparse_n];
-        // TODO: initialize loc
         int *in_loc = new int[sparse_n * 4];  // num_images, c, h, w
-        int *out_loc = new int[sparse_n * 5];  // num_images, b, c, p, q
-
 
         // Initialize in_feats data to random numbers in [0, 1]
-        // randomFill ...
+        generate_random_sparse(in_loc, in_feats, 0.0f, 1.0f, sparse_n,
+                               num_images, c, h, w);
 
-        // TODO: set up in_loc
+        float *out_feats, *d_out_feats;
+        int *out_loc, *d_out_loc;
+
+        std::cout << "Setting output memory for size " << n << std::endl; 
 
         // CPU implementation
         if (kernel == "cpu" || kernel == "all") {
+            // Output has maximum size of num_images * num_channels * num_boxes * p * q
+            out_feats = new float[out_size];
+            out_loc = new int[out_size * 5];  // num_images, b, c, p, q
+
+            // Initialize output to 0
+            memset(out_loc, 0, out_size * 5 * sizeof(int));
+            memset(out_feats, 0, out_size * sizeof(float));
+
             START_TIMER();
+            
             cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
                 num_images, c, h, w, roi_boxes, p, q);
             STOP_RECORD_TIMER(cpu_ms);
-
-            checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
-            memset(out_feats, 0, sparse_n * sizeof(float));
-            memset(out_loc, 0, sparse_n * 5 * sizeof(int));
+            // print_sparse(out_loc, out_feats, out_size, 5);
 
             printf("Size %d naive CPU: %f ms\n", n, cpu_ms);
         }
 
         // Naive GPU implementation
         if (kernel == "naive" || kernel == "all") {
+            d_out_feats = new float[out_size];
+            d_out_loc = new int[out_size * 5];  // num_images, b, c, p, q
+            memset(d_out_feats, 0, out_size * sizeof(float));
+            memset(d_out_loc, 0, out_size * 5 * sizeof(int));
+            
             START_TIMER();
-            cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats,
+            cudaSparseRoiPooling(in_loc, in_feats, d_out_loc, d_out_feats,
                 sparse_n, num_images, c, h, w, roi_boxes, p, q,
                 NAIVE);
+            // cpuSparseRoiPooling(in_loc, in_feats, d_out_loc, d_out_feats, sparse_n,
+            //     num_images, c, h, w, roi_boxes, p, q);
             STOP_RECORD_TIMER(naive_gpu_ms);
 
             checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
-            memset(out_feats, 0, sparse_n * sizeof(float));
-            memset(out_loc, 0, sparse_n * 5 * sizeof(int));
 
             printf("Size %d naive GPU: %f ms\n", n, naive_gpu_ms);
         }
@@ -287,32 +207,44 @@ int main(int argc, char *argv[]) {
         // // Optimal GPU implementation TODO: no optimal implementation planned
         // if (kernel == "optimal"    || kernel == "all") {
         //     START_TIMER();
-            // cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
-            //     num_images, c, h, w, roi_boxes, p, q,
+        //     cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
+        //         num_images, c, h, w, roi_boxes, p, q,
         //         OPTIMAL);
         //     STOP_RECORD_TIMER(optimal_gpu_ms);
 
-            // gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
-            //     sparse_n * sizeof(float), 
-            //     cudaMemcpyDeviceToHost));
-            // gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
-            //     sparse_n * 5 * sizeof(int), 
-            //     cudaMemcpyDeviceToHost));
+        //     gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
+        //         sparse_n * sizeof(float), 
+        //         cudaMemcpyDeviceToHost));
+        //     gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
+        //         sparse_n * 5 * sizeof(int), 
+        //         cudaMemcpyDeviceToHost));
         //     checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
 
-            // memset(out_feats, 0, sparse_n * sizeof(float));
-            // memset(out_loc, 0, sparse_n * 5 * sizeof(int));
-            // gpuErrChk(cudaMemset(d_out_feats, 0, sparse_n * sizeof(float)));
-            // gpuErrChk(cudaMemset(d_out_loc, 0, sparse_n * 5 * sizeof(int)));
+        //     memset(out_feats, 0, sparse_n * sizeof(float));
+        //     memset(out_loc, 0, sparse_n * 5 * sizeof(int));
+        //     gpuErrChk(cudaMemset(d_out_feats, 0, sparse_n * sizeof(float)));
+        //     gpuErrChk(cudaMemset(d_out_loc, 0, sparse_n * 5 * sizeof(int)));
 
         //     printf("Size %d optimal GPU: %f ms\n", n, optimal_gpu_ms);
         // }
 
-        // Free host memory
-        delete[] in_feats;
-        delete[] out_feats;
-        delete[] in_loc;
-        delete[] out_loc;
+        if (kernel == "all") {
+            // check whether gpu roi pooling output matches the cpu output
+            bool isEqual = is_sparse_equal(out_loc, out_feats, out_size,
+                                           d_out_loc, d_out_feats, out_size);
+            if (isEqual) {
+                std::cout << "CPU output and GPU output are equal" << std::endl;
+            } else {
+                std::cout << "!!CPU output and GPU output do not match!!" << std::endl;
+            }
+        }
+
+        delete [] in_feats;
+        delete [] in_loc;
+        delete [] out_feats;
+        delete [] out_loc;
+        delete [] d_out_feats;
+        delete [] d_out_loc;
 
         printf("\n");
     }

@@ -1,5 +1,7 @@
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
+#include <random>
 #include "sparse_utils.hpp"
 
 using namespace std;
@@ -138,7 +140,7 @@ bool is_dense_equal(float *dense1, float* dense2, int n_elem) {
  */
 bool is_sparse_equal(int *loc1, float *feats1, int size1,
                      int *loc2, float *feats2, int size2) {
-    unordered_map<pool_key, float, CustomHash> pool_map1, pool_map2;
+    unordered_map<pool_key, float, PoolKeyHash> pool_map1, pool_map2;
     pool_key pool_val_key;
     float pool_val;
     for (int i = 0; i < size1; i++) {
@@ -146,12 +148,14 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
         if (pool_val == 0) continue;
         pool_val_key = make_tuple(loc1[5 * i], loc1[5 * i + 1], loc1[5 * i + 2],
                                   loc1[5 * i + 3], loc1[5 * i + 4]);
-        pool_map1[pool_val_key] = feats1[i];
+        pool_map1[pool_val_key] = pool_val;
     }
     for (int i = 0; i < size2; i++) {
+        pool_val = feats2[i];
+        if (pool_val == 0) continue;
         pool_val_key = make_tuple(loc2[5 * i], loc2[5 * i + 1], loc2[5 * i + 2],
                                   loc2[5 * i + 3], loc2[5 * i + 4]);
-        pool_map2[pool_val_key] = feats2[i];
+        pool_map2[pool_val_key] = pool_val;
     }
     if (pool_map1.size() != pool_map2.size()) return false;
     for ( auto it = pool_map1.begin(); it != pool_map1.end(); ++it ) {
@@ -160,4 +164,39 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
         if (pool_map1[pool_val_key] != pool_map2[pool_val_key]) return false;
     }
     return true;
+}
+
+/* This function generates a random sparse matrix for in_loc and in_feats
+ * given the input shape (n_images, n_channels, height, width).
+ * The values of the data are between min_val and max_val
+ */
+void generate_random_sparse(int *loc, float *feats, float min_val, float max_val, int sparse_n,
+                            int n_images, int n_channels, int height, int width) {
+    int sparse_idx = 0;
+    unordered_set<sparse_key, SparseKeyHash> sparse_key_set;
+    sparse_key sparse_rand_key;
+    int img_idx, c, h, w;
+
+    // random number generator for the data
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<float> dis(min_val, max_val);
+    
+    while (sparse_idx < sparse_n) {
+        img_idx = rand() % n_images;
+        c = rand() % n_channels;
+        h = rand() % height;
+        w = rand() % width;
+        sparse_rand_key = make_tuple(img_idx, c, h, w);
+        // only add to sparse_key_set if the key does not exist in sparse_key_set
+        if (sparse_key_set.find(sparse_rand_key) == sparse_key_set.end()) {
+            sparse_key_set.insert(sparse_rand_key);
+            loc[4 * sparse_idx] = img_idx;
+            loc[4 * sparse_idx + 1] = c;
+            loc[4 * sparse_idx + 2] = h;
+            loc[4 * sparse_idx + 3] = w;
+            feats[sparse_idx] = dis(gen);
+            sparse_idx++;
+        }
+    }
 }
