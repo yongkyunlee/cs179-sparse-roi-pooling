@@ -1,6 +1,7 @@
 #include <cassert>
 #include <stdio.h>
 #include <cuda_runtime.h>
+#include <iostream>
 
 #include "cuda_header.cuh"
 #include "sparse_roi_pool_device.cuh"
@@ -85,8 +86,11 @@ __device__ void my_insert_key_value(KeyValue* hashtable,
         uint32_t prev = empty_start;
         if (prev == empty_start || prev == rotated_slot)
         {
-            // hashtable[slot].key = key;
-            // hashtable[slot].value = value;
+            hashtable[slot].key = key;
+            hashtable[slot].value = value;
+            printf("Inserted key: (%d %d %d %d %d) with value %f at %d\n",
+                thrust::get<0>(key), thrust::get<1>(key), thrust::get<2>(key),
+                thrust::get<3>(key), thrust::get<4>(key), value, slot);
             return;
         }
 
@@ -107,7 +111,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line,
 }
 __global__
 void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
-    int *out_loc, float *out_feats, int sparse_n, int n, int c,
+    int sparse_n, int n, int c,
     int h, int w, RoiBox roi_box, int p, int q, int image_idx,
     KeyValue* pHashTable) {
 
@@ -156,6 +160,8 @@ void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
         float value;
         my_lookup_key(pHashTable, pool_val_key, &value);
         if ((value == vEmpty)  || (value < in_feats[j])) {
+            printf("Inserting, since prev value: %f, next value: %f\n",
+                value, in_feats[j]);
             my_insert_key_value(pHashTable, pool_val_key, in_feats[j]);
         }
         thread_index += blockDim.x * gridDim.x;
@@ -173,13 +179,10 @@ void cudaSparseRoiPooling(const int *in_loc, const float *in_feats,
 
     // Allocate device memory
     float *d_in_feats;
-    float *d_out_feats;
     int *d_in_loc;
-    int *d_out_loc;
+
     gpuErrChk(cudaMalloc(&d_in_feats, sparse_n * sizeof(float)));
-    gpuErrChk(cudaMalloc(&d_out_feats, sparse_n * sizeof(float)));
     gpuErrChk(cudaMalloc(&d_in_loc, sparse_n * 4 * sizeof(int)));
-    gpuErrChk(cudaMalloc(&d_out_loc, sparse_n * 5 * sizeof(int)));
     // Copy input to GPU
     gpuErrChk(cudaMemcpy(d_in_feats, in_feats, sparse_n * sizeof(float),
         cudaMemcpyHostToDevice));
@@ -201,32 +204,52 @@ void cudaSparseRoiPooling(const int *in_loc, const float *in_feats,
 
         /* Call cudakernel here */
         naiveSparseRoiPoolingKernel<<<blocks, threadsPerBlock>>>(
-            d_in_loc, d_in_feats, d_out_loc, d_out_feats, sparse_n, n, c,
+            d_in_loc, d_in_feats, sparse_n, n, c,
             h, w, roi_boxes[i], p, q, i, pHashTable
         );
     }
 
     // TODO: create a kernel to do this for greater efficiency
-    int out_idx = 0;
+    // int valid_outputs = 0;
     d_pool_key pool_val_key;
     std::vector<KeyValue> kvs = iterate_hashtable(pHashTable);
+    // for (auto it = kvs.begin(); it != kvs.end(); ++it) {
+    //     if (it->value != vEmpty) {
+    //         valid_outputs += 1;
+    //     }
+    // }
+    float *d_out_feats;
+    int *d_out_loc;
+    gpuErrChk(cudaMalloc(&d_out_feats, kvs.size() * sizeof(float)));
+    gpuErrChk(cudaMalloc(&d_out_loc, kvs.size() * 5 * sizeof(int)));
+    
+    int out_idx = 0;
     for (auto it = kvs.begin(); it != kvs.end(); ++it) {
+        if (it->value == vEmpty) {
+            continue;
+        }
         pool_val_key = it->key;
-        d_out_loc[5 * out_idx] = thrust::get<0>(pool_val_key);
-        d_out_loc[5 * out_idx + 1] = thrust::get<1>(pool_val_key);
-        d_out_loc[5 * out_idx + 2] = thrust::get<2>(pool_val_key);
-        d_out_loc[5 * out_idx + 3] = thrust::get<3>(pool_val_key);
-        d_out_loc[5 * out_idx + 4] = thrust::get<4>(pool_val_key);
-        d_out_feats[out_idx] = it->value;
+        out_loc[5 * out_idx] = thrust::get<0>(pool_val_key);
+        out_loc[5 * out_idx + 1] = thrust::get<1>(pool_val_key);
+        out_loc[5 * out_idx + 2] = thrust::get<2>(pool_val_key);
+        out_loc[5 * out_idx + 3] = thrust::get<3>(pool_val_key);
+        out_loc[5 * out_idx + 4] = thrust::get<4>(pool_val_key);
+        out_feats[out_idx] = it->value;
         out_idx++;
+        printf("p: %d, q: %d, value: %f\n",
+            thrust::get<3>(pool_val_key), thrust::get<4>(pool_val_key),
+            it->value);
     }
 
-    gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
-        sparse_n * sizeof(float),
-        cudaMemcpyDeviceToHost));
-    gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
-        sparse_n * 5 * sizeof(int),
-        cudaMemcpyDeviceToHost));
+    // std::cout << "Num valid outputs: " << valid_outputs <<
+    //     " out of total kvs length of: " << kvs.size() << std::endl;
+
+    // gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
+    //     valid_outputs * sizeof(float),
+    //     cudaMemcpyDeviceToHost));
+    // gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
+    //     valid_outputs * 5 * sizeof(int),
+    //     cudaMemcpyDeviceToHost));
 
     // // Not necessary
     // // gpuErrChk(cudaMemset(d_out_feats, 0, sparse_n * sizeof(float)));

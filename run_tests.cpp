@@ -62,7 +62,7 @@ void checkSparseRoiPooling(const int *in_loc, const float *in_feats,
 }
 
 
-void mini_test_0() {
+void mini_test_0(Implementation mode) {
     // Set up data for testing
     const int n_images = 1, n_channels = 1, height = 8, width = 8;
     const int n_elems = n_images * n_channels * height * width;
@@ -121,15 +121,20 @@ void mini_test_0() {
     float *ans_feats = new float[out_size];
     dense_to_sparse(ans_dense, ans_loc, ans_feats, 5, n_images,
                     roi_boxes.size(), n_channels, p, q);
-    // print_sparse(ans_loc, ans_feats, out_size, 5);
+    print_sparse(ans_loc, ans_feats, out_size, 5);
     int *out_loc = new int[out_size * 5];
     float *out_feats = new float[out_size];
-
-    cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
+    if (mode == CPU) {
+        cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
                 n_images, n_channels, height, width, roi_boxes, p, q);
-    // print_sparse(out_loc, out_feats, out_size, 5);
+    } else if (mode == NAIVE) {
+        cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
+                n_images, n_channels, height, width, roi_boxes, p, q, mode);
+    }
+    print_sparse(out_loc, out_feats, out_size, 5);
     bool correct = is_sparse_equal(ans_loc, ans_feats, out_size, out_loc, out_feats, out_size);
-    std::cout << "Is answer correct: " << correct << std::endl;
+    std::cout << "Is answer correct: " << correct << " for mode: " <<
+        mode << std::endl;
     
     roi_boxes.pop_back();
     roi_boxes.push_back({0, 0, 3, 6, 7});
@@ -190,7 +195,9 @@ int main(int argc, char *argv[]) {
         kernel == "naive"   ||
         kernel == "optimal");
 
-    mini_test_0();
+    mini_test_0(CPU);
+    mini_test_0(NAIVE);
+    return 1;
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)

@@ -3,7 +3,7 @@
 
 #include <vector>
 
-enum Implementation { NAIVE, OPTIMAL };
+enum Implementation { CPU, NAIVE, OPTIMAL };
 
 struct RoiBox {
     int img_indx;
