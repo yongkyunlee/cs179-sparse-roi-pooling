@@ -197,10 +197,10 @@ void run_mini_test(int test_idx, Implementation mode) {
     if (mode == CPU) {
         cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
                 n_images, n_channels, height, width, roi_boxes, p, q);
-    } else if (mode == NAIVE) {
+    } else if (mode == GPU) {
         cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
                 sparse_n, n_images, n_channels, height, width,  d_roi_boxes,
-                roi_boxes.size(), p, q, NAIVE);
+                roi_boxes.size(), p, q, GPU);
         // Copy over output
         gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
             out_size * sizeof(float),
@@ -216,7 +216,11 @@ void run_mini_test(int test_idx, Implementation mode) {
         gpuErrChk(cudaFree(d_roi_boxes));
     }
     bool correct = is_sparse_equal(ans_loc, ans_feats, out_size, out_loc, out_feats, out_size);
-    cout << "===== Test" << test_idx << " Result =====" << endl;
+    if (mode == CPU) {
+        cout << "===== Test" << test_idx << " Result (CPU) =====" << endl;
+    } else if (mode == GPU) {
+        cout << "===== Test" << test_idx << " Result (GPU) =====" << endl;
+    }
     cout << "Is answer correct: " << correct << endl;
 
     clean_up_test(data_dense, in_loc, in_feats, ans_loc, ans_feats, out_loc, out_feats);

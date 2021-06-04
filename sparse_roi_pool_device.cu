@@ -265,7 +265,7 @@ void cudaSparseRoiPooling(int *d_in_loc, float *d_in_feats,
     // KeyValue* pHashTable = create_hashtable();
 
     /* Call cudakernel here */
-    if (type == NAIVE) {
+    if (type == GPU) {
         naiveSparseRoiPoolingKernel<<<blocks, threadsPerBlock>>>(
             d_in_loc, d_in_feats, d_out_loc, d_out_feats, d_roi_boxes,
             sparse_n, n, c,

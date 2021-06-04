@@ -78,14 +78,13 @@ int main(int argc, char *argv[]) {
 
     assert(kernel == "all"  ||
         kernel == "cpu"     ||
-        kernel == "naive"   ||
-        kernel == "optimal");
+        kernel == "gpu");
 
 
     run_mini_test(1, CPU);
     run_mini_test(2, CPU);
-    run_mini_test(1, NAIVE);
-    run_mini_test(2, NAIVE);
+    run_mini_test(1, GPU);
+    run_mini_test(2, GPU);
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)
@@ -173,8 +172,6 @@ int main(int argc, char *argv[]) {
             dst += 1;
         }
 
-        std::cout << "Setting output memory for size " << n << std::endl; 
-
         // CPU implementation
         if (kernel == "cpu" || kernel == "all") {
             // Output has maximum size of num_images * num_channels * num_boxes * p * q
@@ -192,11 +189,11 @@ int main(int argc, char *argv[]) {
             STOP_RECORD_TIMER(cpu_ms);
             // print_sparse(out_loc, out_feats, out_size, 5);
 
-            printf("Size %d naive CPU: %f ms\n", n, cpu_ms);
+            printf("Size %d CPU: %f ms\n", n, cpu_ms);
         }
 
         // Naive GPU implementation
-        if (kernel == "naive" || kernel == "all") {
+        if (kernel == "gpu" || kernel == "all") {
             // Output has maximum size of num_images * num_channels * num_boxes * p * q
             naive_out_loc = new int[out_size * 5];  // num_images, b, c, p, q
             naive_out_feats = new float[out_size];
@@ -208,7 +205,7 @@ int main(int argc, char *argv[]) {
             START_TIMER();
             cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
                 sparse_n, num_images, c, h, w, d_roi_boxes,
-                roi_boxes.size(), p, q, NAIVE);
+                roi_boxes.size(), p, q, GPU);
             STOP_RECORD_TIMER(naive_gpu_ms);
 
             gpuErrChk(cudaMemcpy(naive_out_feats, d_out_feats,
@@ -218,7 +215,7 @@ int main(int argc, char *argv[]) {
                 out_size * 5 * sizeof(int),
                 cudaMemcpyDeviceToHost));
 
-            printf("Size %d naive GPU: %f ms\n", n, naive_gpu_ms);
+            printf("Size %d GPU: %f ms\n", n, naive_gpu_ms);
         }
 
         if (kernel == "all") {
