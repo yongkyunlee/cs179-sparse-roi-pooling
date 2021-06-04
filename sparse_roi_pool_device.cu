@@ -10,14 +10,19 @@
 
 
 CUDA_CALLABLE
+bool in_box_bounds(int row, int col, int xmin, int ymin, int xmax, int ymax) {
+    return (row < ymax && row >= ymin && col < xmax && col >= xmin);
+}
+
+CUDA_CALLABLE
 bool in_roi_box(int j, int *in_loc, RoiBox roi_box) {
     // if the roi box image index is different from the sparse image index
     if (in_loc[4 * j] != roi_box.img_indx) {
         return false;
     }
     // if the input location is not inside the roi box
-    if (in_loc[4 * j + 2] < roi_box.ymin || in_loc[4 * j + 2] > roi_box.ymax ||
-            in_loc[4 * j + 3] < roi_box.xmin || in_loc[4 * j + 3] > roi_box.xmax) {
+    if (!in_box_bounds(in_loc[4 * j + 2], in_loc[4 * j + 3], roi_box.xmin,
+        roi_box.ymin, roi_box.xmax + 1, roi_box.ymax + 1)) {
         return false;
     }
 
@@ -109,10 +114,27 @@ inline void gpuAssert(cudaError_t code, const char *file, int line,
         exit(code);
     }
 }
+
+CUDA_CALLABLE
+RoiBox get_roi_sub_box(RoiBox roi_box, int p, int q,
+    int poolIndH, int poolIndW) {
+
+    int roi_width = roi_box.xmax - roi_box.xmin + 1,
+        roi_height = roi_box.ymax - roi_box.ymin + 1;
+    int hRem = roi_height % p, wRem = roi_width % q;
+    int ymin = roi_box.ymin + (roi_height / p) * poolIndH + min(poolIndH, hRem);
+    int ymax = roi_box.ymin + (roi_height / p) * (poolIndH + 1) + min(poolIndH + 1, hRem) - 1;
+    int xmin = roi_box.xmin + (roi_width / q) * poolIndW + min(poolIndW, wRem);
+    int xmax = roi_box.xmin + (roi_width / q) * (poolIndW + 1) + min(poolIndW + 1, wRem) - 1;
+    return {roi_box.img_indx, xmin, ymin, xmax, ymax};
+}
+
+
 __global__
-void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
+void nonFunctionalSparseRoiPoolingKernel(int *in_loc, float *in_feats,
+    int *out_loc, float *out_feats,
     int sparse_n, int n, int c,
-    int h, int w, RoiBox roi_box, int p, int q, int image_idx,
+    int h, int w, RoiBox roi_box, int p, int q, int roi_box_idx,
     KeyValue* pHashTable) {
 
     int roi_width = roi_box.xmax - roi_box.xmin + 1,
@@ -155,7 +177,7 @@ void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
             }
         }
         d_pool_key pool_val_key = thrust::make_tuple(
-            in_loc[4 * j], image_idx, in_loc[4 * j + 1], poolIdxH, poolIdxW);
+            in_loc[4 * j], roi_box_idx, in_loc[4 * j + 1], poolIdxH, poolIdxW);
 
         float value;
         my_lookup_key(pHashTable, pool_val_key, &value);
@@ -165,6 +187,73 @@ void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
             my_insert_key_value(pHashTable, pool_val_key, in_feats[j]);
         }
         thread_index += blockDim.x * gridDim.x;
+    }
+}
+
+__global__
+void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
+    int *out_loc, float *out_feats, RoiBox *roi_boxes,
+    int sparse_n, int n, int c,
+    int h, int w, int p, int q, int b) {
+    uint orig_ti = blockIdx.x * blockDim.x + threadIdx.x;
+    uint thread_index = orig_ti;
+    while (thread_index < p * q * b) {
+        int roi_box_idx = thread_index / (p * q);
+        int poolIdxW = thread_index % q;
+        int poolIdxH = (thread_index / q) % p;
+        bool is_first = true;
+        RoiBox roi_sub_box = get_roi_sub_box(roi_boxes[roi_box_idx], p, q,
+            poolIdxH, poolIdxW);
+
+        out_loc[thread_index * 5] = in_loc[thread_index * 4];
+        out_loc[thread_index * 5 + 1] = roi_box_idx;
+        out_loc[thread_index * 5 + 2] = in_loc[thread_index * 4 + 1];
+        out_loc[thread_index * 5 + 3] = poolIdxH;
+        out_loc[thread_index * 5 + 4] = poolIdxW;
+
+        for (uint i = 0; i < sparse_n; i++) {
+            if (!(in_roi_box(i, in_loc, roi_sub_box))) {
+                continue;
+            }
+            if (is_first) {
+                out_feats[thread_index] = in_feats[i];
+                is_first = false;
+            } else {
+                out_feats[thread_index] = ::fmaxf(out_feats[thread_index],
+                    in_feats[i]);
+            }
+        }
+        thread_index += blockDim.x * gridDim.x;
+    }
+
+    __syncthreads();
+
+    // Compress sparse array
+    uint write_head = 0;
+    if (orig_ti == 0) {
+        uint non_zeros = 0;
+        for (uint read_head = 0; read_head < p * q * b; read_head++) {
+            if (out_feats[read_head] != 0) {
+                non_zeros++;
+            }
+        }
+        // printf("Non zeros: %d\n", non_zeros);
+        for (uint read_head = non_zeros; read_head < p * q * b; read_head++) {
+            if (out_feats[read_head] != 0) {
+                while (out_feats[write_head] != 0) {
+                    write_head++;
+                }
+                // printf("Compacting %d to %d\n", read_head, write_head);
+                out_loc[write_head * 5] = out_loc[read_head * 5];
+                out_loc[write_head * 5 + 1] = out_loc[read_head * 5 + 1];
+                out_loc[write_head * 5 + 2] = out_loc[read_head * 5 + 2];
+                out_loc[write_head * 5 + 3] = out_loc[read_head * 5 + 3];
+                out_loc[write_head * 5 + 4] = out_loc[read_head * 5 + 4];
+                out_feats[write_head] = out_feats[read_head];
+                // For now, not erasing read head
+                write_head++;
+            }
+        }
     }
 }
 
@@ -180,15 +269,33 @@ void cudaSparseRoiPooling(const int *in_loc, const float *in_feats,
     // Allocate device memory
     float *d_in_feats;
     int *d_in_loc;
+    float *d_out_feats;
+    int *d_out_loc;
+    int out_size = n * roi_boxes.size() * c * p * q;
+    RoiBox *d_roi_boxes;
 
     gpuErrChk(cudaMalloc(&d_in_feats, sparse_n * sizeof(float)));
     gpuErrChk(cudaMalloc(&d_in_loc, sparse_n * 4 * sizeof(int)));
+
+    gpuErrChk(cudaMalloc(&d_out_feats, out_size * sizeof(float)));
+    gpuErrChk(cudaMalloc(&d_out_loc, out_size * 5 * sizeof(int)));
+
+    gpuErrChk(cudaMalloc(&d_roi_boxes, roi_boxes.size() * sizeof(RoiBox)));
+
     // Copy input to GPU
     gpuErrChk(cudaMemcpy(d_in_feats, in_feats, sparse_n * sizeof(float),
         cudaMemcpyHostToDevice));
     gpuErrChk(cudaMemcpy(d_in_loc, in_loc, sparse_n * 4 * sizeof(int),
         cudaMemcpyHostToDevice));
+    // Zero output
+    gpuErrChk(cudaMemset(d_out_feats, 0, out_size * sizeof(float)));
 
+    RoiBox *dst = d_roi_boxes;
+    for (unsigned int i = 0; i < roi_boxes.size(); i++) {
+        RoiBox *src = &roi_boxes[i];
+        cudaMemcpy(dst, src, sizeof(RoiBox), cudaMemcpyHostToDevice);
+        dst += 1;
+    }
 
     /*
     Iterate through all in_loc for sparse_n steps
@@ -200,66 +307,29 @@ void cudaSparseRoiPooling(const int *in_loc, const float *in_feats,
      */
     KeyValue* pHashTable = create_hashtable();
 
-    for (unsigned int i = 0; i < roi_boxes.size(); i++) {
-
-        /* Call cudakernel here */
+    /* Call cudakernel here */
+    if (type == NAIVE) {
         naiveSparseRoiPoolingKernel<<<blocks, threadsPerBlock>>>(
-            d_in_loc, d_in_feats, sparse_n, n, c,
-            h, w, roi_boxes[i], p, q, i, pHashTable
+            d_in_loc, d_in_feats, d_out_loc, d_out_feats, d_roi_boxes,
+            sparse_n, n, c,
+            h, w, p, q, roi_boxes.size()
         );
+    } else {
+        assert(false);
     }
 
-    // TODO: create a kernel to do this for greater efficiency
-    // int valid_outputs = 0;
-    d_pool_key pool_val_key;
-    std::vector<KeyValue> kvs = iterate_hashtable(pHashTable);
-    // for (auto it = kvs.begin(); it != kvs.end(); ++it) {
-    //     if (it->value != vEmpty) {
-    //         valid_outputs += 1;
-    //     }
-    // }
-    float *d_out_feats;
-    int *d_out_loc;
-    gpuErrChk(cudaMalloc(&d_out_feats, kvs.size() * sizeof(float)));
-    gpuErrChk(cudaMalloc(&d_out_loc, kvs.size() * 5 * sizeof(int)));
-    
-    int out_idx = 0;
-    for (auto it = kvs.begin(); it != kvs.end(); ++it) {
-        if (it->value == vEmpty) {
-            continue;
-        }
-        pool_val_key = it->key;
-        out_loc[5 * out_idx] = thrust::get<0>(pool_val_key);
-        out_loc[5 * out_idx + 1] = thrust::get<1>(pool_val_key);
-        out_loc[5 * out_idx + 2] = thrust::get<2>(pool_val_key);
-        out_loc[5 * out_idx + 3] = thrust::get<3>(pool_val_key);
-        out_loc[5 * out_idx + 4] = thrust::get<4>(pool_val_key);
-        out_feats[out_idx] = it->value;
-        out_idx++;
-        printf("p: %d, q: %d, value: %f\n",
-            thrust::get<3>(pool_val_key), thrust::get<4>(pool_val_key),
-            it->value);
-    }
-
-    // std::cout << "Num valid outputs: " << valid_outputs <<
-    //     " out of total kvs length of: " << kvs.size() << std::endl;
-
-    // gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
-    //     valid_outputs * sizeof(float),
-    //     cudaMemcpyDeviceToHost));
-    // gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
-    //     valid_outputs * 5 * sizeof(int),
-    //     cudaMemcpyDeviceToHost));
-
-    // // Not necessary
-    // // gpuErrChk(cudaMemset(d_out_feats, 0, sparse_n * sizeof(float)));
-    // // gpuErrChk(cudaMemset(d_out_loc, 0, sparse_n * 5 * sizeof(int)));
-
+    gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
+        out_size * sizeof(float),
+        cudaMemcpyDeviceToHost));
+    gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
+        out_size * 5 * sizeof(int),
+        cudaMemcpyDeviceToHost));
 
     // Free device memory
     gpuErrChk(cudaFree(d_in_feats));
     gpuErrChk(cudaFree(d_out_feats));
     gpuErrChk(cudaFree(d_in_loc));
     gpuErrChk(cudaFree(d_out_loc));
+    gpuErrChk(cudaFree(d_roi_boxes));
     destroy_hashtable(pHashTable);
 }

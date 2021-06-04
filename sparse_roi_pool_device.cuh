@@ -12,6 +12,13 @@ struct RoiBox {
     int xmax;
     int ymax;
 };
+struct SubRoiBox {
+    int img_indx;
+    int xmin;
+    int ymin;
+    int xmax;
+    int ymax;
+};
 
 void cudaSparseRoiPooling(
     const int *in_loc, const float *in_feats,
