@@ -90,7 +90,8 @@ int main(int argc, char *argv[]) {
          size_to_run == 512  ||
          size_to_run == 1024 ||
          size_to_run == 2048 ||
-         size_to_run == 4096))
+         size_to_run == 4096 ||
+         size_to_run ==  16384))
     {
         fprintf(stderr,
             "Program only designed to run sizes 512, 1024, 2048, 4096\n");
@@ -102,30 +103,29 @@ int main(int argc, char *argv[]) {
         kernel == "optimal");
 
 
-    run_mini_test1(CPU);
-    run_mini_test2(CPU);
-    run_mini_test1(NAIVE);
-    run_mini_test2(NAIVE);
-    return 1;
+    run_mini_test(1, CPU);
+    run_mini_test(2, CPU);
+    run_mini_test(1, NAIVE);
+    run_mini_test(2, NAIVE);
 
     // Run the implementations for all desired sizes (2^9 = 512, 
     // 2^12 = 4096)
-    for (int _i = 9; _i < 13; _i++) {
+    for (int _i = 9; _i < 15; _i++) {
         int n = 1 << _i;
+        if (size_to_run != -1 && size_to_run != n)
+            continue;
+
         float sparsity_level = 0.05;
         int sparse_n = static_cast<int>(ceil(n * sparsity_level));
-        int p = 3, q = 3;
+        int p = 7, q = 7;
         int num_images = 1;
         int c = 1;
         int h = n, w = n;
         std::vector<RoiBox> roi_boxes;
         // img_idx, xmin, ymin, xmax, ymax
-        roi_boxes.push_back({0, 0, 0, n / 3, n / 3});
+        roi_boxes.push_back({0, n / 3, n / 3, n * 2 / 3, n * 2 / 3});
         roi_boxes.push_back({0, 0, 0, n-1, n-1});
         int out_size = num_images * roi_boxes.size() * c * p * q;
-
-        if (size_to_run != -1 && size_to_run != n)
-            continue;
 
         assert(n % 64 == 0);
 
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
         // Initialize timers
         float cpu_ms = -1;
         float naive_gpu_ms = -1;
-        float optimal_gpu_ms = -1;
+        // float optimal_gpu_ms = -1;
 
         // Allocate host memory
         float *in_feats = new float[sparse_n];
@@ -159,16 +159,46 @@ int main(int argc, char *argv[]) {
         generate_random_sparse(in_loc, in_feats, 0.0f, 1.0f, sparse_n,
                                num_images, c, h, w);
 
-        float *out_feats, *d_out_feats;
-        int *out_loc, *d_out_loc;
+        float *out_feats, *naive_out_feats;
+        int *out_loc, *naive_out_loc;
+
+        // Allocate device memory
+        float *d_in_feats;
+        float *d_out_feats;
+        int *d_in_loc;
+        int *d_out_loc;
+        RoiBox *d_roi_boxes;
+
+        gpuErrChk(cudaMalloc(&d_in_feats, sparse_n * sizeof(float)));
+        gpuErrChk(cudaMalloc(&d_in_loc, sparse_n * 4 * sizeof(int)));
+
+        gpuErrChk(cudaMalloc(&d_out_feats, out_size * sizeof(float)));
+        gpuErrChk(cudaMalloc(&d_out_loc, out_size * 5 * sizeof(int)));
+
+        gpuErrChk(cudaMalloc(&d_roi_boxes, roi_boxes.size() * sizeof(RoiBox)));
+
+        // Copy input to GPU
+        gpuErrChk(cudaMemcpy(d_in_feats, in_feats, sparse_n * sizeof(float),
+            cudaMemcpyHostToDevice));
+        gpuErrChk(cudaMemcpy(d_in_loc, in_loc, sparse_n * 4 * sizeof(int),
+            cudaMemcpyHostToDevice));
+        // Zero output
+        gpuErrChk(cudaMemset(d_out_feats, 0, out_size * sizeof(float)));
+
+        RoiBox *dst = d_roi_boxes;
+        for (unsigned int i = 0; i < roi_boxes.size(); i++) {
+            RoiBox *src = &roi_boxes[i];
+            cudaMemcpy(dst, src, sizeof(RoiBox), cudaMemcpyHostToDevice);
+            dst += 1;
+        }
 
         std::cout << "Setting output memory for size " << n << std::endl; 
 
         // CPU implementation
         if (kernel == "cpu" || kernel == "all") {
             // Output has maximum size of num_images * num_channels * num_boxes * p * q
-            out_feats = new float[out_size];
             out_loc = new int[out_size * 5];  // num_images, b, c, p, q
+            out_feats = new float[out_size];
 
             // Initialize output to 0
             memset(out_loc, 0, out_size * 5 * sizeof(int));
@@ -186,20 +216,28 @@ int main(int argc, char *argv[]) {
 
         // Naive GPU implementation
         if (kernel == "naive" || kernel == "all") {
-            d_out_feats = new float[out_size];
-            d_out_loc = new int[out_size * 5];  // num_images, b, c, p, q
-            memset(d_out_feats, 0, out_size * sizeof(float));
-            memset(d_out_loc, 0, out_size * 5 * sizeof(int));
-            
+            // Output has maximum size of num_images * num_channels * num_boxes * p * q
+            naive_out_loc = new int[out_size * 5];  // num_images, b, c, p, q
+            naive_out_feats = new float[out_size];
+
+            // Initialize output to 0
+            memset(naive_out_loc, 0, out_size * 5 * sizeof(int));
+            memset(naive_out_feats, 0, out_size * sizeof(float));
+
             START_TIMER();
-            cudaSparseRoiPooling(in_loc, in_feats, d_out_loc, d_out_feats,
-                sparse_n, num_images, c, h, w, roi_boxes, p, q,
-                NAIVE);
-            // cpuSparseRoiPooling(in_loc, in_feats, d_out_loc, d_out_feats, sparse_n,
-            //     num_images, c, h, w, roi_boxes, p, q);
+            cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
+                sparse_n, num_images, c, h, w, d_roi_boxes,
+                roi_boxes.size(), p, q, NAIVE);
             STOP_RECORD_TIMER(naive_gpu_ms);
 
-            checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
+            gpuErrChk(cudaMemcpy(naive_out_feats, d_out_feats,
+                out_size * sizeof(float),
+                cudaMemcpyDeviceToHost));
+            gpuErrChk(cudaMemcpy(naive_out_loc, d_out_loc,
+                out_size * 5 * sizeof(int),
+                cudaMemcpyDeviceToHost));
+
+            checkSparseRoiPooling(in_loc, in_feats, naive_out_loc, naive_out_feats, num_images);
 
             printf("Size %d naive GPU: %f ms\n", n, naive_gpu_ms);
         }
@@ -231,7 +269,7 @@ int main(int argc, char *argv[]) {
         if (kernel == "all") {
             // check whether gpu roi pooling output matches the cpu output
             bool isEqual = is_sparse_equal(out_loc, out_feats, out_size,
-                                           d_out_loc, d_out_feats, out_size);
+                naive_out_loc, naive_out_feats, out_size);
             if (isEqual) {
                 std::cout << "CPU output and GPU output are equal" << std::endl;
             } else {
@@ -243,8 +281,15 @@ int main(int argc, char *argv[]) {
         delete [] in_loc;
         delete [] out_feats;
         delete [] out_loc;
-        delete [] d_out_feats;
-        delete [] d_out_loc;
+        delete [] naive_out_feats;
+        delete [] naive_out_loc;
+
+        // Free device memory
+        gpuErrChk(cudaFree(d_in_feats));
+        gpuErrChk(cudaFree(d_out_feats));
+        gpuErrChk(cudaFree(d_in_loc));
+        gpuErrChk(cudaFree(d_out_loc));
+        gpuErrChk(cudaFree(d_roi_boxes));
 
         printf("\n");
     }

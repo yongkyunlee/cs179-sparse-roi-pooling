@@ -103,18 +103,6 @@ __device__ void my_insert_key_value(KeyValue* hashtable,
     }
 }
 
-
-#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line,
-    bool abort = true)
-{
-    if (code != cudaSuccess) {
-        fprintf(stderr,"GPUassert: %s %s %d\n",
-            cudaGetErrorString(code), file, line);
-        exit(code);
-    }
-}
-
 CUDA_CALLABLE
 RoiBox get_roi_sub_box(RoiBox roi_box, int p, int q,
     int poolIndH, int poolIndW) {
@@ -194,7 +182,7 @@ __global__
 void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
     int *out_loc, float *out_feats, RoiBox *roi_boxes,
     int sparse_n, int n, int c,
-    int h, int w, int p, int q, int b) {
+    int h, int w, int b, int p, int q) {
     uint orig_ti = blockIdx.x * blockDim.x + threadIdx.x;
     uint thread_index = orig_ti;
     while (thread_index < p * q * b) {
@@ -258,44 +246,13 @@ void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
 }
 
 
-void cudaSparseRoiPooling(const int *in_loc, const float *in_feats,
-    int *out_loc, float *out_feats, int sparse_n, int n, int c,
-    int h, int w, std::vector<RoiBox> roi_boxes, int p, int q,
+void cudaSparseRoiPooling(int *d_in_loc, float *d_in_feats,
+    int *d_out_loc, float *d_out_feats, int sparse_n, int n, int c,
+    int h, int w, RoiBox *d_roi_boxes, int b, int p, int q,
     Implementation type) {
 
     int blocks = 512;
     int threadsPerBlock = 128;
-
-    // Allocate device memory
-    float *d_in_feats;
-    int *d_in_loc;
-    float *d_out_feats;
-    int *d_out_loc;
-    int out_size = n * roi_boxes.size() * c * p * q;
-    RoiBox *d_roi_boxes;
-
-    gpuErrChk(cudaMalloc(&d_in_feats, sparse_n * sizeof(float)));
-    gpuErrChk(cudaMalloc(&d_in_loc, sparse_n * 4 * sizeof(int)));
-
-    gpuErrChk(cudaMalloc(&d_out_feats, out_size * sizeof(float)));
-    gpuErrChk(cudaMalloc(&d_out_loc, out_size * 5 * sizeof(int)));
-
-    gpuErrChk(cudaMalloc(&d_roi_boxes, roi_boxes.size() * sizeof(RoiBox)));
-
-    // Copy input to GPU
-    gpuErrChk(cudaMemcpy(d_in_feats, in_feats, sparse_n * sizeof(float),
-        cudaMemcpyHostToDevice));
-    gpuErrChk(cudaMemcpy(d_in_loc, in_loc, sparse_n * 4 * sizeof(int),
-        cudaMemcpyHostToDevice));
-    // Zero output
-    gpuErrChk(cudaMemset(d_out_feats, 0, out_size * sizeof(float)));
-
-    RoiBox *dst = d_roi_boxes;
-    for (unsigned int i = 0; i < roi_boxes.size(); i++) {
-        RoiBox *src = &roi_boxes[i];
-        cudaMemcpy(dst, src, sizeof(RoiBox), cudaMemcpyHostToDevice);
-        dst += 1;
-    }
 
     /*
     Iterate through all in_loc for sparse_n steps
@@ -305,31 +262,17 @@ void cudaSparseRoiPooling(const int *in_loc, const float *in_feats,
     At the end, one thread reads through all entries and writes it to
     out_loc, out_feats
      */
-    KeyValue* pHashTable = create_hashtable();
+    // KeyValue* pHashTable = create_hashtable();
 
     /* Call cudakernel here */
     if (type == NAIVE) {
         naiveSparseRoiPoolingKernel<<<blocks, threadsPerBlock>>>(
             d_in_loc, d_in_feats, d_out_loc, d_out_feats, d_roi_boxes,
             sparse_n, n, c,
-            h, w, p, q, roi_boxes.size()
+            h, w, b, p, q
         );
     } else {
         assert(false);
     }
-
-    gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
-        out_size * sizeof(float),
-        cudaMemcpyDeviceToHost));
-    gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
-        out_size * 5 * sizeof(int),
-        cudaMemcpyDeviceToHost));
-
-    // Free device memory
-    gpuErrChk(cudaFree(d_in_feats));
-    gpuErrChk(cudaFree(d_out_feats));
-    gpuErrChk(cudaFree(d_in_loc));
-    gpuErrChk(cudaFree(d_out_loc));
-    gpuErrChk(cudaFree(d_roi_boxes));
-    destroy_hashtable(pHashTable);
+    // destroy_hashtable(pHashTable);
 }

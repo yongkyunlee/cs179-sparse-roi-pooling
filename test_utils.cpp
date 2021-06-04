@@ -1,6 +1,28 @@
+#include <cstring>
+#include <iostream>
+#include <cassert>
+#include <cuda_runtime.h>
+
 #include "test_utils.hpp"
 #include "sparse_utils.hpp"
-#include <iostream>
+/*
+ * NOTE: You can use this macro to easily check cuda error codes
+ * and get more information.
+ * 
+ * Modified from:
+ * http://stackoverflow.com/questions/14038589/
+ *         what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
+ */
+#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line,
+    bool abort = true)
+{
+    if (code != cudaSuccess) {
+        fprintf(stderr,"GPUassert: %s %s %d\n",
+            cudaGetErrorString(code), file, line);
+        exit(code);
+    }
+}
 
 using namespace std;
 
@@ -70,49 +92,6 @@ float* init_test1_ans(PoolInfo *pool_info, vector<RoiBox> &roi_boxes) {
     return ans_dense;
 }
 
-void run_mini_test1(Implementation mode) {
-    // set up data for testing
-    DataInfo test_data_info;
-    float *data_dense = init_test1_data(&test_data_info);
-    const int n_images = test_data_info.n_images, n_channels = test_data_info.n_channels,
-              width = test_data_info.width, height = test_data_info.height;
-
-    // convert dense matrix to sparse matrix
-    int sparse_n = count_dense_nonzero(data_dense, n_images, n_channels, 
-                                       height, width);
-    int *in_loc = new int[sparse_n * 4];
-    float *in_feats = new float[sparse_n];
-    dense_to_sparse(data_dense, in_loc, in_feats, 4, n_images, -1,
-                    n_channels, height, width);
-    
-    // set up pooling and the correct answer
-    PoolInfo test_pool_info;
-    vector<RoiBox> roi_boxes;
-    float *ans_dense = init_test1_ans(&test_pool_info, roi_boxes);
-    const int p = test_pool_info.p, q = test_pool_info.q,
-                  out_size = test_pool_info.out_size;
-    
-    int *ans_loc = new int[out_size * 5];
-    float *ans_feats = new float[out_size];
-    dense_to_sparse(ans_dense, ans_loc, ans_feats, 5, n_images,
-                    roi_boxes.size(), n_channels, p, q);
-    int *out_loc = new int[out_size * 5];
-    float *out_feats = new float[out_size];
-
-    if (mode == CPU) {
-        cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
-                n_images, n_channels, height, width, roi_boxes, p, q);
-    } else if (mode == NAIVE) {
-        cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
-                n_images, n_channels, height, width, roi_boxes, p, q, mode);
-    }
-    bool correct = is_sparse_equal(ans_loc, ans_feats, out_size, out_loc, out_feats, out_size);
-    cout << "===== Test1 Result =====" << endl;
-    cout << "Is answer correct: " << correct << endl;
-
-    clean_up_test(data_dense, in_loc, in_feats, ans_loc, ans_feats, out_loc, out_feats);
-}
-
 float* init_test2_ans(PoolInfo *pool_info, vector<RoiBox> &roi_boxes) {
     roi_boxes.push_back({0, 0, 3, 6, 7});
     roi_boxes.push_back({0, 5, 0, 7, 2});
@@ -147,7 +126,7 @@ float* init_test2_ans(PoolInfo *pool_info, vector<RoiBox> &roi_boxes) {
     return ans_dense;
 }
 
-void run_mini_test2(Implementation mode) {
+void run_mini_test(int test_idx, Implementation mode) {
     // set up data for testing
     DataInfo test_data_info;
     float *data_dense = init_test1_data(&test_data_info);
@@ -165,9 +144,16 @@ void run_mini_test2(Implementation mode) {
     // set up pooling and the correct answer
     PoolInfo test_pool_info;
     vector<RoiBox> roi_boxes;
-    float *ans_dense = init_test2_ans(&test_pool_info, roi_boxes);
+    float *ans_dense;
+    if (test_idx == 1) {
+        ans_dense = init_test1_ans(&test_pool_info, roi_boxes);
+    } else if (test_idx == 2) {
+        ans_dense = init_test2_ans(&test_pool_info, roi_boxes);
+    } else {
+        assert(false);
+    }
     const int p = test_pool_info.p, q = test_pool_info.q,
-              out_size = test_pool_info.out_size;
+                  out_size = test_pool_info.out_size;
     
     int *ans_loc = new int[out_size * 5];
     float *ans_feats = new float[out_size];
@@ -175,18 +161,62 @@ void run_mini_test2(Implementation mode) {
                     roi_boxes.size(), n_channels, p, q);
     int *out_loc = new int[out_size * 5];
     float *out_feats = new float[out_size];
-    // print_sparse(ans_loc, ans_feats, out_size, 5);
+
+    // Initialize output to 0
+    memset(out_loc, 0, out_size * 5 * sizeof(int));
+    memset(out_feats, 0, out_size * sizeof(float));
+
+    // Allocate device memory
+    float *d_in_feats, *d_out_feats;
+    int *d_in_loc, *d_out_loc;
+    RoiBox *d_roi_boxes;
+
+    gpuErrChk(cudaMalloc(&d_in_feats, sparse_n * sizeof(float)));
+    gpuErrChk(cudaMalloc(&d_in_loc, sparse_n * 4 * sizeof(int)));
+
+    gpuErrChk(cudaMalloc(&d_out_feats, out_size * sizeof(float)));
+    gpuErrChk(cudaMalloc(&d_out_loc, out_size * 5 * sizeof(int)));
+
+    gpuErrChk(cudaMalloc(&d_roi_boxes, roi_boxes.size() * sizeof(RoiBox)));
+
+    // Copy input to GPU
+    gpuErrChk(cudaMemcpy(d_in_feats, in_feats, sparse_n * sizeof(float),
+        cudaMemcpyHostToDevice));
+    gpuErrChk(cudaMemcpy(d_in_loc, in_loc, sparse_n * 4 * sizeof(int),
+        cudaMemcpyHostToDevice));
+    // Zero output
+    gpuErrChk(cudaMemset(d_out_feats, 0, out_size * sizeof(float)));
+
+    RoiBox *dst = d_roi_boxes;
+    for (unsigned int i = 0; i < roi_boxes.size(); i++) {
+        RoiBox *src = &roi_boxes[i];
+        cudaMemcpy(dst, src, sizeof(RoiBox), cudaMemcpyHostToDevice);
+        dst += 1;
+    }
 
     if (mode == CPU) {
         cpuSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
                 n_images, n_channels, height, width, roi_boxes, p, q);
     } else if (mode == NAIVE) {
-        cudaSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, sparse_n,
-                n_images, n_channels, height, width, roi_boxes, p, q, mode);
+        cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
+                sparse_n, n_images, n_channels, height, width,  d_roi_boxes,
+                roi_boxes.size(), p, q, NAIVE);
+        // Copy over output
+        gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
+            out_size * sizeof(float),
+            cudaMemcpyDeviceToHost));
+        gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
+            out_size * 5 * sizeof(int),
+            cudaMemcpyDeviceToHost));
+        // Free device memory
+        gpuErrChk(cudaFree(d_in_feats));
+        gpuErrChk(cudaFree(d_out_feats));
+        gpuErrChk(cudaFree(d_in_loc));
+        gpuErrChk(cudaFree(d_out_loc));
+        gpuErrChk(cudaFree(d_roi_boxes));
     }
-    // print_sparse(out_loc, out_feats, out_size, 5);
     bool correct = is_sparse_equal(ans_loc, ans_feats, out_size, out_loc, out_feats, out_size);
-    cout << "===== Test2 Result =====" << endl;
+    cout << "===== Test" << test_idx << " Result =====" << endl;
     cout << "Is answer correct: " << correct << endl;
 
     clean_up_test(data_dense, in_loc, in_feats, ans_loc, ans_feats, out_loc, out_feats);
