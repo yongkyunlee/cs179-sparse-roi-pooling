@@ -1,0 +1,202 @@
+# 1. Results for when memory ops are included in GPU time
+
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+Setting output memory for size 512
+Size 512 naive CPU: 0.018368 ms
+Size 512 naive GPU: 44.502209 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 1024
+Size 1024 naive CPU: 0.023552 ms
+Size 1024 naive GPU: 567.658020 ms
+!!CPU output and GPU output do not match!!
+
+Setting output memory for size 2048
+Size 2048 naive CPU: 0.023264 ms
+Size 2048 naive GPU: 44.648254 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 4096
+Size 4096 naive CPU: 0.039200 ms
+Size 4096 naive GPU: 44.360703 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 8192
+Size 8192 naive CPU: 0.057312 ms
+Size 8192 naive GPU: 498.065582 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 16384
+Size 16384 naive CPU: 0.110880 ms
+Size 16384 naive GPU: 50.671711 ms
+CPU output and GPU output are equal
+
+# 2. Results for when memory ops aren't included in GPU time
+
+Time limit for this program set to 10 seconds
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+Setting output memory for size 512
+Size 512 naive CPU: 0.008832 ms
+Size 512 naive GPU: 0.082528 ms
+!!CPU output and GPU output do not match!!
+
+Setting output memory for size 1024
+Size 1024 naive CPU: 0.013280 ms
+Size 1024 naive GPU: 0.116384 ms
+!!CPU output and GPU output do not match!!
+
+Setting output memory for size 2048
+Size 2048 naive CPU: 0.023072 ms
+Size 2048 naive GPU: 0.152064 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 4096
+Size 4096 naive CPU: 0.037536 ms
+Size 4096 naive GPU: 0.208352 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 8192
+Size 8192 naive CPU: 0.057184 ms
+Size 8192 naive GPU: 0.340384 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 16384
+Size 16384 naive CPU: 0.095072 ms
+Size 16384 naive GPU: 0.605440 ms
+CPU output and GPU output are equal
+
+# 3. Results of 2 when no compression of the sparse output for CUDA used
+
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+Setting output memory for size 512
+Size 512 naive CPU: 0.008768 ms
+Size 512 naive GPU: 0.029824 ms
+!!CPU output and GPU output do not match!!
+
+Setting output memory for size 1024
+Size 1024 naive CPU: 0.012928 ms
+Size 1024 naive GPU: 0.047616 ms
+!!CPU output and GPU output do not match!!
+
+Setting output memory for size 2048
+Size 2048 naive CPU: 0.023680 ms
+Size 2048 naive GPU: 0.084480 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 4096
+Size 4096 naive CPU: 0.060192 ms
+Size 4096 naive GPU: 0.156544 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 8192
+Size 8192 naive CPU: 0.067488 ms
+Size 8192 naive GPU: 0.300832 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 16384
+Size 16384 naive CPU: 0.108768 ms
+Size 16384 naive GPU: 0.581536 ms
+CPU output and GPU output are equal
+
+# 4. Results of 3 with bug fix
+
+Time limit for this program set to 10 seconds
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+Setting output memory for size 512
+Size 512 naive CPU: 0.008448 ms
+Size 512 naive GPU: 0.029696 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 1024
+Size 1024 naive CPU: 0.013984 ms
+Size 1024 naive GPU: 0.047680 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 2048
+Size 2048 naive CPU: 0.023648 ms
+Size 2048 naive GPU: 0.084480 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 4096
+Size 4096 naive CPU: 0.047936 ms
+Size 4096 naive GPU: 0.154240 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 8192
+Size 8192 naive CPU: 0.069088 ms
+Size 8192 naive GPU: 0.295072 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 16384
+Size 16384 naive CPU: 0.096736 ms
+Size 16384 naive GPU: 0.588128 ms
+CPU output and GPU output are equal
+
+# 5. Results of 4 but with 128 randomly generated RoI boxes instead of 2
+
+Time limit for this program set to 10 seconds
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+===== Test1 Result =====
+Is answer correct: 1
+===== Test2 Result =====
+Is answer correct: 1
+Setting output memory for size 512
+Size 512 naive CPU: 0.136416 ms
+Size 512 naive GPU: 0.037792 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 1024
+Size 1024 naive CPU: 0.179488 ms
+Size 1024 naive GPU: 0.056672 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 2048
+Size 2048 naive CPU: 0.307776 ms
+Size 2048 naive GPU: 0.096256 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 4096
+Size 4096 naive CPU: 0.617728 ms
+Size 4096 naive GPU: 0.170080 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 8192
+Size 8192 naive CPU: 1.030208 ms
+Size 8192 naive GPU: 0.320000 ms
+CPU output and GPU output are equal
+
+Setting output memory for size 16384
+Size 16384 naive CPU: 1.880096 ms
+Size 16384 naive GPU: 0.614528 ms
+CPU output and GPU output are equal
