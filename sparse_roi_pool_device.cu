@@ -193,9 +193,9 @@ void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
         RoiBox roi_sub_box = get_roi_sub_box(roi_boxes[roi_box_idx], p, q,
             poolIdxH, poolIdxW);
 
-        out_loc[thread_index * 5] = in_loc[thread_index * 4];
+        out_loc[thread_index * 5] = 0;
         out_loc[thread_index * 5 + 1] = roi_box_idx;
-        out_loc[thread_index * 5 + 2] = in_loc[thread_index * 4 + 1];
+        out_loc[thread_index * 5 + 2] = 0;
         out_loc[thread_index * 5 + 3] = poolIdxH;
         out_loc[thread_index * 5 + 4] = poolIdxW;
 
@@ -214,35 +214,35 @@ void naiveSparseRoiPoolingKernel(int *in_loc, float *in_feats,
         thread_index += blockDim.x * gridDim.x;
     }
 
-    __syncthreads();
+    // __syncthreads();
 
-    // Compress sparse array
-    uint write_head = 0;
-    if (orig_ti == 0) {
-        uint non_zeros = 0;
-        for (uint read_head = 0; read_head < p * q * b; read_head++) {
-            if (out_feats[read_head] != 0) {
-                non_zeros++;
-            }
-        }
-        // printf("Non zeros: %d\n", non_zeros);
-        for (uint read_head = non_zeros; read_head < p * q * b; read_head++) {
-            if (out_feats[read_head] != 0) {
-                while (out_feats[write_head] != 0) {
-                    write_head++;
-                }
-                // printf("Compacting %d to %d\n", read_head, write_head);
-                out_loc[write_head * 5] = out_loc[read_head * 5];
-                out_loc[write_head * 5 + 1] = out_loc[read_head * 5 + 1];
-                out_loc[write_head * 5 + 2] = out_loc[read_head * 5 + 2];
-                out_loc[write_head * 5 + 3] = out_loc[read_head * 5 + 3];
-                out_loc[write_head * 5 + 4] = out_loc[read_head * 5 + 4];
-                out_feats[write_head] = out_feats[read_head];
-                // For now, not erasing read head
-                write_head++;
-            }
-        }
-    }
+    // // Compress sparse array
+    // uint write_head = 0;
+    // if (orig_ti == 0) {
+    //     uint non_zeros = 0;
+    //     for (uint read_head = 0; read_head < p * q * b; read_head++) {
+    //         if (out_feats[read_head] != 0) {
+    //             non_zeros++;
+    //         }
+    //     }
+    //     // printf("Non zeros: %d\n", non_zeros);
+    //     for (uint read_head = non_zeros; read_head < p * q * b; read_head++) {
+    //         if (out_feats[read_head] != 0) {
+    //             while (out_feats[write_head] != 0) {
+    //                 write_head++;
+    //             }
+    //             // printf("Compacting %d to %d\n", read_head, write_head);
+    //             out_loc[write_head * 5] = out_loc[read_head * 5];
+    //             out_loc[write_head * 5 + 1] = out_loc[read_head * 5 + 1];
+    //             out_loc[write_head * 5 + 2] = out_loc[read_head * 5 + 2];
+    //             out_loc[write_head * 5 + 3] = out_loc[read_head * 5 + 3];
+    //             out_loc[write_head * 5 + 4] = out_loc[read_head * 5 + 4];
+    //             out_feats[write_head] = out_feats[read_head];
+    //             // For now, not erasing read head
+    //             write_head++;
+    //         }
+    //     }
+    // }
 }
 
 

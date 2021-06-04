@@ -1,4 +1,5 @@
 #include <iostream>
+#include <stdio.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <random>
@@ -143,6 +144,7 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
     unordered_map<pool_key, float, PoolKeyHash> pool_map1, pool_map2;
     pool_key pool_val_key;
     float pool_val;
+    bool is_equal = true;
     for (int i = 0; i < size1; i++) {
         pool_val = feats1[i];
         if (pool_val == 0) continue;
@@ -157,13 +159,50 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
                                   loc2[5 * i + 3], loc2[5 * i + 4]);
         pool_map2[pool_val_key] = pool_val;
     }
-    if (pool_map1.size() != pool_map2.size()) return false;
+
+    if (pool_map1.size() != pool_map2.size()) {
+        printf("Pool sizes not equal: %d != %d\n",
+            pool_map1.size(), pool_map2.size());
+        is_equal = false;
+    }
     for ( auto it = pool_map1.begin(); it != pool_map1.end(); ++it ) {
         pool_val_key = it->first;
-        if (pool_map2.find(pool_val_key) == pool_map2.end()) return false;
-        if (pool_map1[pool_val_key] != pool_map2[pool_val_key]) return false;
+        if (pool_map2.find(pool_val_key) == pool_map2.end()) {
+            printf("Key in 1 not found in 2: (%d, %d, %d, %d, %d): %f\n",
+                get<0>(pool_val_key),
+                get<1>(pool_val_key),
+                get<2>(pool_val_key),
+                get<3>(pool_val_key),
+                get<4>(pool_val_key),
+                pool_map1[pool_val_key]);
+            is_equal = false;
+        }
+        else if (pool_map1[pool_val_key] != pool_map2[pool_val_key]) {
+            printf("Mismatched values for key: (%d, %d, %d, %d, %d): %f != %f\n",
+                get<0>(pool_val_key),
+                get<1>(pool_val_key),
+                get<2>(pool_val_key),
+                get<3>(pool_val_key),
+                get<4>(pool_val_key),
+                pool_map1[pool_val_key],
+                pool_map2[pool_val_key]);
+            is_equal = false;
+        }
     }
-    return true;
+    for ( auto it = pool_map2.begin(); it != pool_map2.end(); ++it ) {
+        pool_val_key = it->first;
+        if (pool_map1.find(pool_val_key) == pool_map1.end()) {
+            printf("Key in 2 not found in 1: (%d, %d, %d, %d, %d): %f\n",
+                get<0>(pool_val_key),
+                get<1>(pool_val_key),
+                get<2>(pool_val_key),
+                get<3>(pool_val_key),
+                get<4>(pool_val_key),
+                pool_map2[pool_val_key]);
+            is_equal = false;
+        }
+    }
+    return is_equal;
 }
 
 /* This function generates a random sparse matrix for in_loc and in_feats
@@ -199,4 +238,33 @@ void generate_random_sparse(int *loc, float *feats, float min_val, float max_val
             sparse_idx++;
         }
     }
+}
+
+/* This function generates num_roi_boxes random RoI boxes per image, given
+ * (n_images, height, weight, num_roi_boxes, p, q)
+ */
+vector<RoiBox> generate_random_roi_boxes(int n_images, int height, int width,
+    int num_roi_boxes, int p, int q) {
+    vector<RoiBox> roi_boxes;
+
+    for (int img_idx = 0; img_idx < n_images; img_idx++) {
+        roi_boxes.push_back({img_idx, 0, 0, width - 1, height - 1});
+        for (int i = 0; i < num_roi_boxes; i++) {
+            int a = rand() % width, b = rand() % width;
+            int c = rand() % height, d = rand() % height;
+            int xmin = min(a, b);
+            int xmax = max(a, b);
+            int ymin = min(c, d);
+            int ymax = max(c, d);
+
+            if ((xmax - xmin <= q) || (ymax - ymin <= p)) {
+                i--;
+            } else {
+                // img_idx, xmin, ymin, xmax, ymax
+                roi_boxes.push_back({img_idx, xmin, ymin, xmax, ymax});
+            }
+
+        }
+    }
+    return roi_boxes;
 }

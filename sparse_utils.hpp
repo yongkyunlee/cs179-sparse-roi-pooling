@@ -1,5 +1,7 @@
 #pragma once
+#include <vector>
 #include <tuple>
+#include "sparse_roi_pool_device.cuh"
 
 static const int base_mult = 1000003;
 static const int base_adder = 82520 + 5;
@@ -58,3 +60,5 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
                      int *loc2, float *feats2, int size2);
 void generate_random_sparse(int *loc, float *feats, float min_val, float max_val, int sparse_n,
                             int n_images, int n_channels, int height, int width);
+std::vector<RoiBox> generate_random_roi_boxes(int n_images, int height, int width,
+    int num_roi_boxes, int p, int q);

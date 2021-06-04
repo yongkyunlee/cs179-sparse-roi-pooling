@@ -121,10 +121,12 @@ int main(int argc, char *argv[]) {
         int num_images = 1;
         int c = 1;
         int h = n, w = n;
-        std::vector<RoiBox> roi_boxes;
-        // img_idx, xmin, ymin, xmax, ymax
-        roi_boxes.push_back({0, n / 3, n / 3, n * 2 / 3, n * 2 / 3});
-        roi_boxes.push_back({0, 0, 0, n-1, n-1});
+        // Number of RoI boxes per batch in Fast RCNN Paper
+        // https://arxiv.org/pdf/1504.08083.pdf
+        int num_roi_boxes = 128;
+        std::vector<RoiBox> roi_boxes = generate_random_roi_boxes(
+            num_images, h, w, num_roi_boxes, p, q);
+
         int out_size = num_images * roi_boxes.size() * c * p * q;
 
         assert(n % 64 == 0);
