@@ -42,28 +42,7 @@ void randomFill(float *fill, int size) {
     }
 }
 
-void checkSparseRoiPooling(const int *in_loc, const float *in_feats,
-    const int *out_loc, const float *out_feats, int n) {
-    bool correct = true;
-
-    // TODO: Insert validation logic here
-    // for (int i = 0; i < n; i++) {
-        
-    //         if (a[i + n * j] != b[j + n * i]) {
-    //             correct = false;
-    //             fprintf(stderr,
-    //                 "Pooling failed: a[%d, %d] != b[%d, %d], %f != %f\n",
-    //                 i, j, j, i, a[i + n * j], b[j + n * i]);
-    //             assert(correct);
-    //         }
-    //     }
-    // }
-
-    assert(correct);
-}
-
 int main(int argc, char *argv[]) {
-
     // These functions allow you to select the least utilized GPU 
     // on your system as well as enforce a time limit on program execution.
     // Please leave these enabled as a courtesy to your fellow classmates
@@ -161,8 +140,8 @@ int main(int argc, char *argv[]) {
         generate_random_sparse(in_loc, in_feats, 0.0f, 1.0f, sparse_n,
                                num_images, c, h, w);
 
-        float *out_feats, *naive_out_feats;
-        int *out_loc, *naive_out_loc;
+        float *out_feats = NULL, *naive_out_feats = NULL;
+        int *out_loc = NULL, *naive_out_loc = NULL;
 
         // Allocate device memory
         float *d_in_feats;
@@ -239,34 +218,8 @@ int main(int argc, char *argv[]) {
                 out_size * 5 * sizeof(int),
                 cudaMemcpyDeviceToHost));
 
-            checkSparseRoiPooling(in_loc, in_feats, naive_out_loc, naive_out_feats, num_images);
-
             printf("Size %d naive GPU: %f ms\n", n, naive_gpu_ms);
         }
-
-        // // Optimal GPU implementation TODO: no optimal implementation planned
-        // if (kernel == "optimal"    || kernel == "all") {
-        //     START_TIMER();
-        //     cudaSparseRoiPooling(d_in_loc, d_in_feats, d_out_loc, d_out_feats,
-        //         num_images, c, h, w, roi_boxes, p, q,
-        //         OPTIMAL);
-        //     STOP_RECORD_TIMER(optimal_gpu_ms);
-
-        //     gpuErrChk(cudaMemcpy(out_feats, d_out_feats,
-        //         sparse_n * sizeof(float), 
-        //         cudaMemcpyDeviceToHost));
-        //     gpuErrChk(cudaMemcpy(out_loc, d_out_loc,
-        //         sparse_n * 5 * sizeof(int), 
-        //         cudaMemcpyDeviceToHost));
-        //     checkSparseRoiPooling(in_loc, in_feats, out_loc, out_feats, num_images);
-
-        //     memset(out_feats, 0, sparse_n * sizeof(float));
-        //     memset(out_loc, 0, sparse_n * 5 * sizeof(int));
-        //     gpuErrChk(cudaMemset(d_out_feats, 0, sparse_n * sizeof(float)));
-        //     gpuErrChk(cudaMemset(d_out_loc, 0, sparse_n * 5 * sizeof(int)));
-
-        //     printf("Size %d optimal GPU: %f ms\n", n, optimal_gpu_ms);
-        // }
 
         if (kernel == "all") {
             // check whether gpu roi pooling output matches the cpu output
@@ -281,10 +234,11 @@ int main(int argc, char *argv[]) {
 
         delete [] in_feats;
         delete [] in_loc;
-        delete [] out_feats;
-        delete [] out_loc;
-        delete [] naive_out_feats;
-        delete [] naive_out_loc;
+
+        if (out_feats != NULL) delete [] out_feats;
+        if (out_loc != NULL) delete [] out_loc;
+        if (naive_out_loc != NULL) delete [] naive_out_feats;
+        if (naive_out_loc != NULL) delete [] naive_out_loc;
 
         // Free device memory
         gpuErrChk(cudaFree(d_in_feats));

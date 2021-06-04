@@ -108,7 +108,7 @@ void test_correctness(std::vector<KeyValue> insert_kvs, std::vector<KeyValue> de
 
     printf("Building unordered_map from original list...\n");
     std::unordered_map<d_pool_key, std::vector<float>, CustomThrustHash> all_kvs_map;
-    for (int i = 0; i < insert_kvs.size(); i++)
+    for (unsigned int i = 0; i < insert_kvs.size(); i++)
     {
         if (i % 10000000 == 0)
             printf("    Inserting %d/%d\n", i, (uint32_t)insert_kvs.size());
@@ -124,7 +124,7 @@ void test_correctness(std::vector<KeyValue> insert_kvs, std::vector<KeyValue> de
         }
     }
 
-    for (int i = 0; i < delete_kvs.size(); i++)
+    for (unsigned int i = 0; i < delete_kvs.size(); i++)
     {
         if (i % 10000000 == 0)
             printf("    Deleting %d/%d\n", i, (uint32_t)delete_kvs.size());

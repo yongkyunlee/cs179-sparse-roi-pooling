@@ -161,8 +161,7 @@ bool is_sparse_equal(int *loc1, float *feats1, int size1,
     }
 
     if (pool_map1.size() != pool_map2.size()) {
-        printf("Pool sizes not equal: %d != %d\n",
-            pool_map1.size(), pool_map2.size());
+        printf("Pool sizes not equal\n");
         is_equal = false;
     }
     for ( auto it = pool_map1.begin(); it != pool_map1.end(); ++it ) {
